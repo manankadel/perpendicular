@@ -1,0 +1,11 @@
+node_modules/
+.next/
+out/
+*.log
+.env
+.env.local
+.DS_Store
+data/workspace-state.json
+data/workspace-state.tmp
+coverage/
+*.tsbuildinfo
