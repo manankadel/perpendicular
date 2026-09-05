@@ -169,13 +169,46 @@ export type WorkspaceState = {
   sequences: Sequence[];
   tickets: Ticket[];
   activity: Activity[];
+  integrations?: Array<{
+    provider: string;
+    status: "not_configured" | "connected" | "degraded" | "disconnected";
+    accountEmail: string | null;
+    scopes: string[];
+    lastSyncAt: string | null;
+  }>;
 };
 
 const now = () => new Date().toISOString();
 
 const id = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 
+function createEmptyState(companyId: string): WorkspaceState {
+  const aiCredits = Number(process.env.INITIAL_AI_CREDITS || 1000);
+  const dataCredits = Number(process.env.INITIAL_DATA_CREDITS || 500);
+  return {
+    workspace: {
+      id: companyId,
+      name: companyId,
+      plan: "Open Source",
+      aiCredits: { remaining: aiCredits, limit: aiCredits },
+      dataCredits: { remaining: dataCredits, purchased: dataCredits },
+      region: "LAN / Dell",
+      model: process.env.OLLAMA_MODEL ? `Ollama · ${process.env.OLLAMA_MODEL}` : "Ollama · not configured",
+    },
+    employees: [],
+    documents: [],
+    conversations: [],
+    runs: [],
+    lists: [],
+    sequences: [],
+    tickets: [],
+    activity: [],
+    integrations: [],
+  };
+}
+
 export function createInitialState(companyId = "blueblood-demo"): WorkspaceState {
+  if (process.env.NODE_ENV === "production") return createEmptyState(companyId);
   const timestamp = now();
   const atlas: Employee = {
     id: "emp-atlas",
@@ -530,6 +563,7 @@ export function createInitialState(companyId = "blueblood-demo"): WorkspaceState
       { id: "act-4", type: "system", title: "Knowledge index is healthy", detail: "3 docs · 19 chunks · 3 employees", createdAt: new Date(Date.now() - 1000 * 60 * 70).toISOString() },
       { id: "act-5", type: "employee", title: "Nova prompt v1 published", detail: "Brand guardrails loaded", createdAt: new Date(Date.now() - 1000 * 60 * 95).toISOString() },
     ],
+    integrations: [],
   };
 }
 

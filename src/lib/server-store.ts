@@ -2,44 +2,47 @@ import "server-only";
 
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { Pool } from "pg";
 import { createInitialState, type WorkspaceState } from "@/lib/domain";
+import { getDatabase } from "@/lib/database";
 
 const dataDirectory = path.join(process.cwd(), "data");
 const dataFile = path.join(dataDirectory, "workspace-state.json");
 const defaultCompanyId = process.env.DEFAULT_COMPANY_ID || "blueblood-demo";
 
-let pool: Pool | null = null;
-let postgresDisabled = false;
 let mutationQueue = Promise.resolve();
 const transientStates = new Map<string, WorkspaceState>();
 
 async function getPool() {
-  if (!process.env.DATABASE_URL || postgresDisabled) return null;
-  if (!pool) {
-    pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: 5,
-      connectionTimeoutMillis: 2500,
-      idleTimeoutMillis: 10000,
-    });
-  }
-
-  try {
-    await pool.query(`
+  const database = await getDatabase();
+  if (database) {
+    try {
+      await database.query(`
       create table if not exists perpendicular_workspace_state (
         company_id text primary key,
         state jsonb not null,
         updated_at timestamptz not null default now()
       )
-    `);
-    return pool;
-  } catch {
-    postgresDisabled = true;
-    await pool.end().catch(() => undefined);
-    pool = null;
-    return null;
+      `);
+      return database;
+    } catch {
+      return null;
+    }
   }
+  return null;
+}
+
+export async function listWorkspaceIds() {
+  const database = await getPool();
+  if (database) {
+    const result = await database.query<{ company_id: string }>("select company_id from perpendicular_workspace_state order by company_id");
+    return result.rows.map((row) => row.company_id);
+  }
+  if (!allowFileFallback()) throw new Error("Production database is not configured or unavailable.");
+  return [defaultCompanyId];
+}
+
+function allowFileFallback() {
+  return process.env.NODE_ENV !== "production";
 }
 
 async function readFileState(companyId: string) {
@@ -79,6 +82,8 @@ export async function getWorkspace(companyId = defaultCompanyId): Promise<Worksp
     return initial;
   }
 
+  if (!allowFileFallback()) throw new Error("Production database is not configured or unavailable.");
+
   const existing = await readFileState(companyId);
   if (existing) return existing;
   const initial = createInitialState(companyId);
@@ -101,6 +106,8 @@ export async function saveWorkspace(companyId: string, state: WorkspaceState) {
     );
     return state;
   }
+
+  if (!allowFileFallback()) throw new Error("Production database is not configured or unavailable.");
 
   try {
     await writeFileState(companyId, state);

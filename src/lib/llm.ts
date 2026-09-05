@@ -4,6 +4,13 @@ import { buildFallbackReply, findRelevantDocuments, type Employee, type Document
 
 type LlmResult = { content: string; citations: string[]; provider: "ollama" | "local fallback" };
 
+export class LlmError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LlmError";
+  }
+}
+
 function trimForPrompt(value: string, length = 1600) {
   return value.length > length ? `${value.slice(0, length)}…` : value;
 }
@@ -48,6 +55,9 @@ export async function generateEmployeeReply(
     }
   }
 
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_LOCAL_LLM_FALLBACK !== "true") {
+    throw new LlmError("The local model is unavailable. Start Ollama on the Dell before running an employee.");
+  }
   const fallback = buildFallbackReply(employee, message, documents);
   return { ...fallback, provider: "local fallback" };
 }

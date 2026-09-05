@@ -1,34 +1,34 @@
 # Perpendicular
 
-Perpendicular is an open-source work system for small teams that want autonomous AI employees with visible context, quality scores, and follow-through.
+Perpendicular is an open-source AI work system for small teams. It turns a named employee, scoped knowledge, a scheduled task, and a visible evaluation trace into one operational loop.
 
-The working thesis came from the Parallel Labs audit: broad AI workspaces are easy to demo and hard to trust. Perpendicular makes the proof part of the product. A role has a prompt, memory, knowledge, schedule, runs, scores, prompt versions, and a golden evaluation set. A lead row can be enriched and enrolled without leaving the list. A support escalation has an ID, an owner, an SLA, and a customer rating.
+The production shape is deliberate: Vercel serves the browser UI; the Dell runs the API, Postgres, Ollama, and durable integration data. Blueblood ID is the identity authority. Gmail is an explicit OAuth connection with encrypted refresh-token storage, persisted inbox messages, and reply-pause behavior.
 
-## What works now
+## Functional surface
 
-- Company-scoped workspace state.
-- AI employee creation with versioned prompts and golden tests.
-- Chat with scoped knowledge retrieval, citations, Ollama support, and an offline fallback.
-- Manual runs and scheduled heartbeat runs with independent scores and trace steps.
-- Prompt version history plus golden evaluation that proposes a new version instead of silently changing the live prompt.
-- Knowledge source ingestion from pasted text or URLs, with immediate local retrieval.
-- Smart List search, per-row local enrichment, visible Data Credit cost, dedupe-safe enrollment, and suppression-aware sequence status.
-- Multi-step sequences with reply-pause and sender guardrail copy.
-- Support tickets with priority, assignee, SLA clock, resolution, and CSAT.
-- Activity log, usage gauges, and a Dell/Ollama/Postgres self-hosting panel.
-- Docker image, Postgres adapter, local JSON fallback, and Dell deployment notes.
+- Blueblood ID session verification with product membership and workspace isolation.
+- Employee creation, prompt versions, golden evaluations, chat, manual runs, schedules, and heartbeat execution.
+- Knowledge capture from pasted text or a public URL, with scoped retrieval and citations.
+- Smart List creation, lead import, public company research, dedupe, credit accounting, and sequence enrollment gates.
+- Draft sequences with suppression/reply-pause state. No external email is sent unless Gmail is connected and a send command is explicitly called.
+- Ticket queue with priority, owner, SLA deadline, resolution, and CSAT.
+- Gmail OAuth with PKCE, encrypted refresh tokens, message sync, inbox persistence, and reply detection.
+- Scoped API keys, revocation, audit events, OpenAPI JSON, and MCP JSON-RPC tools.
+- Self-hosted pricing endpoint: Open Source is free; there is no fake Stripe checkout.
 
 ## Run locally
 
 ```bash
 npm install
 cp .env.example .env.local
-npm run dev
+ALLOW_UNAUTHENTICATED_LOCAL=true ALLOW_LOCAL_LLM_FALLBACK=true npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). No paid API key is required. If Ollama is installed, run `ollama pull qwen2.5:3b`; otherwise the app uses its clearly labeled local fallback.
+Local development can use the JSON state fallback. Production cannot: `DATABASE_URL`, `BLUEBLOOD_ID_*`, `INTEGRATION_ENCRYPTION_KEY`, and `CRON_SECRET` are required on the Dell. Ollama is required for production employee runs; the app fails clearly if it is unavailable.
 
-The first local request creates `data/workspace-state.json`. That file is ignored by git. Set `DATABASE_URL` when you want to exercise the Postgres adapter.
+## Database
+
+Apply `db/001_workspace_state.sql` and then `db/002_platform.sql` to the dedicated `perpendicular` Postgres database. Do not use the shared Blueblood ID database for product state. The second migration contains integration, OAuth-state, API-key, audit, job, and inbox tables.
 
 ## Verify
 
@@ -37,22 +37,17 @@ npm run test
 npm run typecheck
 npm run lint
 npm run build
+npm audit --omit=dev --audit-level=high
 ```
 
-## Architecture choices
+The API contract is available at `/api/docs`. The launch runbook and trust boundaries are in [`docs/production-architecture.md`](docs/production-architecture.md) and [`deploy/dell/README.md`](deploy/dell/README.md).
 
-This first slice is intentionally boring:
+## Required provider setup
 
-- Next.js App Router for the web product and Node runtime API routes.
-- Postgres JSONB for the initial company-scoped state so the product can move fast without locking the domain model to a brittle schema. The migration is in `db/001_workspace_state.sql`.
-- Ollama for local model inference. The LLM adapter is isolated in `src/lib/llm.ts`, so Qdrant embeddings, a different open model, or a queue worker can be added without changing the UI contract.
-- A host-triggered heartbeat endpoint instead of pretending a serverless timer is durable.
-- No external analytics, billing, CRM, enrichment, telephony, or hosted model provider is required for the core demo.
+Google login is handled by Blueblood ID. Gmail requires a Google Cloud OAuth web client with the exact redirect URI in `GOOGLE_GMAIL_REDIRECT_URI`, plus the Gmail scopes requested by the app. The client secret and `INTEGRATION_ENCRYPTION_KEY` stay server-side. A Gmail send has not been performed by this repository; use the Settings test-send action only against an address you control.
 
-## What is deliberately not faked yet
-
-Real email sending, LinkedIn automation, telephony, CRM sync, billing, SSO, and full field-level RBAC require provider credentials and operational policy. The app exposes the contracts and UI states needed to add them, but does not pretend a local deterministic enrichment function is Apollo or a local sequence is an inbox sender. Those are the next production adapters, after the core loop is validated.
+No enrichment vendor, hosted model, Stripe checkout, telephony provider, LinkedIn automation, or WhatsApp provider is silently substituted. If one is not configured, its action is unavailable or returns a clear configuration error.
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See [`LICENSE`](LICENSE).

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import {
   addActivity,
-  buildFallbackReply,
   createId,
   scoreRun,
   timestamp,
@@ -10,14 +9,46 @@ import {
 } from "@/lib/domain";
 import { generateEmployeeReply } from "@/lib/llm";
 import { getWorkspace, updateWorkspace } from "@/lib/server-store";
+import { authenticateRequest, getLoginUrl, IdentityError } from "@/lib/identity";
+import { hasPermission } from "@/lib/route-auth";
+import { listIntegrationSummaries, recordAuditEvent } from "@/lib/integration-store";
+import { researchPersonCompany, researchWebsite } from "@/lib/public-research";
+import { sameOrigin } from "@/lib/security";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const json = (body: unknown, init?: ResponseInit) => NextResponse.json(body, init);
+const corsHeaders = {
+  "access-control-allow-origin": process.env.PERPENDICULAR_WEB_ORIGIN || "https://perpendicular.bluebloodstudio.com",
+  "access-control-allow-credentials": "true",
+  "access-control-allow-headers": "authorization, content-type, x-company-id, x-organization-slug, x-api-key",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  vary: "Origin",
+};
 
-function companyIdFrom(request: Request) {
-  return request.headers.get("x-company-id") || process.env.DEFAULT_COMPANY_ID || "blueblood-demo";
+const json = (body: unknown, init?: ResponseInit) => NextResponse.json(body, {
+  ...init,
+  headers: { ...corsHeaders, ...init?.headers },
+});
+
+export function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
+}
+
+async function getIdentity(request: Request) {
+  try {
+    return { context: await authenticateRequest(request) };
+  } catch (error) {
+    if (error instanceof IdentityError) {
+      return {
+        response: json({
+          error: error.message,
+          ...(error.status === 401 ? { loginUrl: getLoginUrl(request) } : {}),
+        }, { status: error.status }),
+      };
+    }
+    throw error;
+  }
 }
 
 function findEmployee(state: WorkspaceState, employeeId: string) {
@@ -56,11 +87,23 @@ function makeRun(state: WorkspaceState, employee: Employee, task: string, trigge
 }
 
 export async function GET(request: Request) {
-  return json(await getWorkspace(companyIdFrom(request)));
+  const identity = await getIdentity(request);
+  if ("response" in identity) return identity.response;
+  try {
+    const state = await getWorkspace(identity.context.workspaceId);
+    let integrations = state.integrations || [];
+    try { integrations = await listIntegrationSummaries(identity.context.workspaceId); } catch { if (process.env.NODE_ENV === "production") throw new Error("Integration storage is not ready."); }
+    return json({ ...state, integrations });
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : "Workspace storage is unavailable." }, { status: 503 });
+  }
 }
 
 export async function POST(request: Request) {
-  const companyId = companyIdFrom(request);
+  if (!sameOrigin(request) && !request.headers.get("x-api-key") && !(request.headers.get("authorization") || "").startsWith("Bearer pp_")) return json({ error: "Cross-origin mutation rejected." }, { status: 403 });
+  const identity = await getIdentity(request);
+  if ("response" in identity) return identity.response;
+  const companyId = identity.context.workspaceId;
   let body: { action?: string; [key: string]: unknown };
   try {
     body = (await request.json()) as { action?: string; [key: string]: unknown };
@@ -70,12 +113,15 @@ export async function POST(request: Request) {
 
   const action = body.action;
   if (!action) return json({ error: "Missing action." }, { status: 400 });
+  const requiredPermission = action === "chat" || action === "enrich-row" ? "workspace:read" : "workspace:write";
+  if (!hasPermission(identity.context, requiredPermission)) return json({ error: "You do not have permission for this action." }, { status: 403 });
 
   try {
     if (action === "chat") {
       const employeeId = String(body.employeeId || "");
       const message = String(body.message || "").trim();
       if (!message) return json({ error: "Message is required." }, { status: 400 });
+      if (message.length > 10000) return json({ error: "Message is too long." }, { status: 413 });
       const current = await getWorkspace(companyId);
       const employee = findEmployee(current, employeeId);
       if (!employee) return json({ error: "Employee not found." }, { status: 404 });
@@ -95,10 +141,11 @@ export async function POST(request: Request) {
         addActivity(state, { type: "run", title: `${employee.name} answered in chat`, detail: `${result.provider} · ${result.citations.length} source${result.citations.length === 1 ? "" : "s"}`, });
         return state;
       });
+      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.chat", resourceType: "employee", resourceId: employeeId }); } catch (error) { if (process.env.NODE_ENV === "production") return json({ error: error instanceof Error ? error.message : "Audit storage is unavailable." }, { status: 503 }); }
       return json({ state: next, provider: result.provider });
     }
 
-    const updated = await updateWorkspace(companyId, (state) => {
+    const updated = await updateWorkspace(companyId, async (state) => {
       switch (action) {
         case "create-employee": {
           const title = String(body.title || "").trim();
@@ -131,8 +178,14 @@ export async function POST(request: Request) {
         }
         case "create-document": {
           const name = String(body.name || "").trim();
-          const content = String(body.content || "").trim();
+          let content = String(body.content || "").trim();
+          if (body.source === "url") {
+            const sourceUrl = String(body.url || "").trim();
+            if (!sourceUrl) throw new Error("A URL is required for URL capture.");
+            content = (await researchWebsite(sourceUrl)).text;
+          }
           if (!name || !content) throw new Error("Document name and content are required.");
+          if (content.length > 100000) throw new Error("Knowledge source is too large. Keep it under 100,000 characters.");
           const document = {
             id: createId("doc"),
             name,
@@ -147,12 +200,40 @@ export async function POST(request: Request) {
           addActivity(state, { type: "system", title: `${document.name} is indexed`, detail: `${document.chunks} chunks · shared with live employees`, });
           return state;
         }
+        case "create-list": {
+          const name = String(body.name || "").trim();
+          if (!name) throw new Error("List name is required.");
+          if (state.lists.some((list) => list.name.toLowerCase() === name.toLowerCase())) throw new Error("A list with this name already exists.");
+          state.lists.unshift({ id: createId("list"), name, description: String(body.description || "").trim() || "Imported prospects ready for qualification.", updatedAt: timestamp(), rows: [] });
+          addActivity(state, { type: "lead", title: `${name} was created`, detail: "Ready for lead imports and public research", });
+          return state;
+        }
+        case "import-row": {
+          const list = state.lists.find((item) => item.id === String(body.listId || ""));
+          const email = String(body.email || "").trim().toLowerCase();
+          const name = String(body.name || "").trim();
+          const company = String(body.company || "").trim();
+          if (!list || !name || !company || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("List, name, company, and a valid email are required.");
+          if (list.rows.some((row) => row.email.toLowerCase() === email)) throw new Error("This email is already in the list.");
+          list.rows.unshift({ id: createId("row"), name, email, company, role: String(body.role || "Unknown"), location: String(body.location || "Unknown"), score: 50, status: "new", emailStatus: "unknown", intent: "Imported lead", companyInsight: "No public research captured yet", enrollmentStatus: "not enrolled", lastAction: "Imported by workspace operator" });
+          list.updatedAt = timestamp();
+          addActivity(state, { type: "lead", title: `${name} was imported`, detail: `${company} · ${list.name}`, });
+          return state;
+        }
+        case "create-sequence": {
+          const name = String(body.name || "").trim();
+          if (!name) throw new Error("Sequence name is required.");
+          state.sequences.unshift({ id: createId("seq"), name, status: "draft", audience: String(body.audience || "Imported leads"), enrolled: 0, replied: 0, booked: 0, steps: [{ id: createId("step"), channel: "Email", title: "First touch", delay: "Day 0", body: String(body.body || "Write a useful, specific first touch. Require human approval before sending.") }] });
+          addActivity(state, { type: "sequence", title: `${name} was created`, detail: "Draft sequence · Gmail connection and approval required before sending", });
+          return state;
+        }
         case "run-employee": {
           const employee = findEmployee(state, String(body.employeeId || ""));
           const task = String(body.task || "").trim();
           if (!employee || !task) throw new Error("Employee and task are required.");
-          const fallback = buildFallbackReply(employee, task, state.documents);
-          const run = makeRun(state, employee, task, "manual", fallback.content);
+          const result = await generateEmployeeReply(employee, task, state.documents);
+          const run = makeRun(state, employee, task, "manual", result.content);
+          run.trace[2].detail = `${employee.model} · ${result.provider}`;
           addActivity(state, { type: "run", title: `${employee.name} completed a run`, detail: `Score ${run.score} · ${task}`, });
           return state;
         }
@@ -160,8 +241,9 @@ export async function POST(request: Request) {
           const employee = findEmployee(state, String(body.employeeId || ""));
           if (!employee) throw new Error("Employee not found.");
           const task = employee.goldenTests[0]?.input || "Give your best recommendation.";
-          const fallback = buildFallbackReply(employee, task, state.documents);
-          const run = makeRun(state, employee, task, "evaluation", fallback.content);
+          const result = await generateEmployeeReply(employee, task, state.documents);
+          const run = makeRun(state, employee, task, "evaluation", result.content);
+          run.trace[2].detail = `${employee.model} · ${result.provider}`;
           employee.goldenTests = employee.goldenTests.map((test) => ({ ...test, lastScore: Math.max(78, Math.min(98, run.score + (test.id.length % 5) - 2)) }));
           const currentPrompt = employee.promptVersions.find((version) => version.active)?.prompt || employee.systemPrompt;
           employee.promptVersions.unshift({
@@ -186,7 +268,7 @@ export async function POST(request: Request) {
                 enabled: true,
                 cadence,
                 task: String(body.task || "Review the workspace and write the highest-leverage next action."),
-                nextRunAt: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
+                nextRunAt: new Date(Date.now() + ({ "every 15m": 15, hourly: 60, daily: 1440, weekly: 10080 }[cadence] * 60 * 1000)).toISOString(),
               }
             : null;
           addActivity(state, { type: "employee", title: `${employee.name} schedule ${enabled ? "enabled" : "paused"}`, detail: enabled ? `${cadence} · bounded to the workspace` : "No autonomous runs will fire", });
@@ -197,14 +279,16 @@ export async function POST(request: Request) {
           const row = list?.rows.find((item) => item.id === String(body.rowId || ""));
           if (!list || !row) throw new Error("Lead row not found.");
           if (row.status !== "enriched") {
-            state.workspace.dataCredits.remaining = Math.max(0, state.workspace.dataCredits.remaining - 2);
+            if (state.workspace.dataCredits.remaining < 2) throw new Error("Not enough Data Credits for public research.");
+            const research = await researchPersonCompany(row.email, row.company);
+            state.workspace.dataCredits.remaining -= 2;
             row.status = "enriched";
-            row.emailStatus = "verified";
-            row.score = Math.min(98, row.score + 9);
-            row.companyInsight = `${row.companyInsight} · verified decision-maker signal`;
-            row.lastAction = "Enriched via local waterfall";
+            row.emailStatus = "unknown";
+            row.score = Math.min(98, row.score + 5);
+            row.companyInsight = research.insight;
+            row.lastAction = `Public website researched · ${research.url}`;
           }
-          addActivity(state, { type: "lead", title: `${row.name} was enriched`, detail: `2 Data Credits · ${row.emailStatus} email · score ${row.score}`, });
+          addActivity(state, { type: "lead", title: `${row.name} was researched`, detail: `2 Data Credits · public company source captured · score ${row.score}`, });
           return state;
         }
         case "enroll-row": {
@@ -212,6 +296,8 @@ export async function POST(request: Request) {
           const row = list?.rows.find((item) => item.id === String(body.rowId || ""));
           const sequence = state.sequences.find((item) => item.id === String(body.sequenceId || ""));
           if (!list || !row || !sequence) throw new Error("Lead or sequence not found.");
+          if (row.status !== "enriched") throw new Error("Research the lead before enrolling it.");
+          if (row.enrollmentStatus === "enrolled") return state;
           row.enrollmentStatus = "enrolled";
           row.lastAction = `Enrolled in ${sequence.name}`;
           sequence.enrolled += 1;
@@ -257,6 +343,11 @@ export async function POST(request: Request) {
           throw new Error(`Unknown action: ${action}`);
       }
     });
+    try {
+      await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: `workspace.${action}`, metadata: { action } });
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") return json({ error: error instanceof Error ? error.message : "Audit storage is unavailable." }, { status: 503 });
+    }
     return json(updated);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Action failed.";
