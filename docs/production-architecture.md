@@ -4,21 +4,23 @@
 
 Perpendicular is a multi-tenant AI work system. The primary user journey is:
 
-1. A person signs in through Blueblood ID using Google, email, magic link, WhatsApp OTP, or MFA.
-2. Blueblood ID issues a signed product session containing the user and organization memberships.
-3. The product resolves the active organization and enforces its role before every read or write.
-4. The user creates an AI Employee with a role, prompt, model, knowledge sources, tools, memory scope, and schedule.
-5. A Smart List discovers or imports people and companies, enriches rows, scores fit, removes duplicates, and applies suppression rules.
-6. Qualified rows can enter a Sequence. The sender adapter sends through a connected mailbox, respects timezone and daily limits, pauses on replies or suppression, and records every provider event.
-7. Inbox events are normalized into conversations. Employees can draft or send only when the workspace policy allows it; otherwise a human approval gate is required.
-8. Heartbeat jobs run through Redis-backed workers. Every run is idempotent, retryable, scored, traced, and visible in Activity.
-9. The Executive Assistant, API, and MCP surfaces call the same application commands as the web UI.
+1. A person signs in through Perpendicular's product-owned screen with email/password and, when enabled, MFA.
+2. The product API validates those credentials through Blueblood ID and forwards only signed HttpOnly session cookies.
+3. Blueblood ID's session contains the user and organization memberships.
+4. The product resolves the active organization and enforces its role before every read or write.
+5. The user creates an AI Employee with a role, prompt, model, knowledge sources, tools, memory scope, and schedule.
+6. A Smart List discovers or imports people and companies, enriches rows, scores fit, removes duplicates, and applies suppression rules.
+7. Qualified rows can enter a Sequence. The sender adapter sends through a connected mailbox, respects timezone and daily limits, pauses on replies or suppression, and records every provider event.
+8. Inbox events are normalized into conversations. Employees can draft or send only when the workspace policy allows it; otherwise a human approval gate is required.
+9. Heartbeat jobs run through Redis-backed workers. Every run is idempotent, retryable, scored, traced, and visible in Activity.
+10. The Executive Assistant, API, and MCP surfaces call the same application commands as the web UI.
 
 ## Runtime layout
 
 ```text
 Browser
   └─ Vercel UI (perpendicular.bluebloodstudio.com)
+       ├─ Perpendicular-hosted login form → server-side Blueblood ID auth
        ├─ Blueblood ID session cookie (*.bluebloodstudio.com)
        └─ HTTPS API calls → Dell API (perpendicular-api.bluebloodstudio.com)
 

@@ -262,7 +262,7 @@ export default function PerpendicularConsole() {
       .then(async (response) => {
         const data = await response.json().catch(() => ({})) as WorkspaceState & { error?: string; loginUrl?: string };
         if (response.status === 401) {
-          setLoginUrl(data.loginUrl || "https://id.bluebloodstudio.com/login");
+          setLoginUrl(data.loginUrl || "/login");
           return null;
         }
         if (!response.ok) throw new Error(data.error || "Workspace failed to load.");
@@ -284,7 +284,7 @@ export default function PerpendicularConsole() {
       const response = await fetch(apiPath("/api/workspace"), { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...payload }) });
       const data = (await response.json()) as { state?: WorkspaceState; error?: string; loginUrl?: string };
       if (response.status === 401) {
-        setLoginUrl(data.loginUrl || "https://id.bluebloodstudio.com/login");
+        setLoginUrl(data.loginUrl || "/login");
         setState(null);
       }
       if (!response.ok || !data.state) throw new Error(data.error || "Action failed.");
@@ -351,7 +351,7 @@ export default function PerpendicularConsole() {
   };
 
   if (!state) {
-    if (loginUrl) return <div className="loading"><div><h1>Sign in to Perpendicular</h1><p>Your Blueblood ID session controls workspace access.</p><a className="button-primary" href={loginUrl}>Continue with Blueblood ID <ArrowUpRight size={13} /></a></div></div>;
+    if (loginUrl) return <div className="loading"><div><h1>Sign in to Perpendicular</h1><p>Sign in to continue to your workspace.</p><a className="button-primary" href={loginUrl}>Sign in <ArrowUpRight size={13} /></a></div></div>;
     return <div className="loading">Loading the workspace…</div>;
   }
 

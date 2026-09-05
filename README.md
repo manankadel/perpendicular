@@ -6,7 +6,7 @@ The production shape is deliberate: Vercel serves the browser UI; the Dell runs 
 
 ## Functional surface
 
-- Blueblood ID session verification with product membership and workspace isolation.
+- Perpendicular-hosted sign-in with password and MFA handoff to Blueblood ID, plus product membership and workspace isolation.
 - Employee creation, prompt versions, golden evaluations, chat, manual runs, schedules, and heartbeat execution.
 - Knowledge capture from pasted text or a public URL, with scoped retrieval and citations.
 - Smart List creation, lead import, public company research, dedupe, credit accounting, and sequence enrollment gates.
@@ -44,7 +44,7 @@ The API contract is available at `/api/docs`. The launch runbook and trust bound
 
 ## Required provider setup
 
-Google login is handled by Blueblood ID. Gmail requires a Google Cloud OAuth web client with the exact redirect URI in `GOOGLE_GMAIL_REDIRECT_URI`, plus the Gmail scopes requested by the app. The client secret and `INTEGRATION_ENCRYPTION_KEY` stay server-side. A Gmail send has not been performed by this repository; use the Settings test-send action only against an address you control.
+Perpendicular owns the sign-in screen. Blueblood ID remains the server-side identity authority: it validates the password or MFA challenge and issues the signed, cross-subdomain session cookie; no identity token is returned to browser JavaScript. Gmail requires a Google Cloud OAuth web client with the exact redirect URI in `GOOGLE_GMAIL_REDIRECT_URI`, plus the Gmail scopes requested by the app. The client secret and `INTEGRATION_ENCRYPTION_KEY` stay server-side. A Gmail send has not been performed by this repository; use the Settings test-send action only against an address you control.
 
 No enrichment vendor, hosted model, Stripe checkout, telephony provider, LinkedIn automation, or WhatsApp provider is silently substituted. If one is not configured, its action is unavailable or returns a clear configuration error.
 

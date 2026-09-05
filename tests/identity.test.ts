@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getAccessToken, normalizeMemberships } from "../src/lib/identity";
+import { getAccessToken, getLoginUrl, normalizeMemberships } from "../src/lib/identity";
 
 test("reads bearer tokens before cookies", () => {
   const request = new Request("https://perpendicular.test/api/workspace", {
@@ -26,4 +26,12 @@ test("normalizes only complete product memberships", () => {
 test("accepts an API key header as a distinct credential path", () => {
   const request = new Request("https://perpendicular.test/api/workspace", { headers: { "x-api-key": "pp_live_secret" } });
   assert.equal(request.headers.get("x-api-key"), "pp_live_secret");
+});
+
+test("returns the product-owned login surface", () => {
+  const previous = process.env.PERPENDICULAR_WEB_ORIGIN;
+  process.env.PERPENDICULAR_WEB_ORIGIN = "https://perpendicular.bluebloodstudio.com";
+  assert.equal(getLoginUrl(new Request("https://perpendicular-api.bluebloodstudio.com/api/workspace")), "https://perpendicular.bluebloodstudio.com/login?next=%2F");
+  if (previous === undefined) delete process.env.PERPENDICULAR_WEB_ORIGIN;
+  else process.env.PERPENDICULAR_WEB_ORIGIN = previous;
 });

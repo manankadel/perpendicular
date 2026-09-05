@@ -179,6 +179,11 @@ export async function authenticateRequest(request: Request): Promise<IdentityCon
 }
 
 export function getLoginUrl(request: Request) {
-  const canonical = process.env.NEXT_PUBLIC_CANONICAL_URL || new URL(request.url).origin;
-  return `https://id.bluebloodstudio.com/login?product=perpendicular&next=${encodeURIComponent(`${canonical}/`)}`;
+  const configured = process.env.PERPENDICULAR_WEB_ORIGIN || process.env.NEXT_PUBLIC_CANONICAL_URL || new URL(request.url).origin;
+  const canonical = new URL(configured);
+  canonical.pathname = "/login";
+  canonical.search = "";
+  canonical.hash = "";
+  canonical.searchParams.set("next", "/");
+  return canonical.toString();
 }
