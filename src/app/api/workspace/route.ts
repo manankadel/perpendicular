@@ -162,7 +162,7 @@ export async function POST(request: Request) {
             department,
             avatar: name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
             systemPrompt: prompt,
-            model: "qwen2.5:3b · local",
+            model: process.env.OLLAMA_MODEL ? `Ollama · ${process.env.OLLAMA_MODEL}` : "Ollama · not configured",
             status: "live",
             memoryScope: "company",
             score: 0,
