@@ -12,6 +12,7 @@ const defaultCompanyId = process.env.DEFAULT_COMPANY_ID || "blueblood-demo";
 let pool: Pool | null = null;
 let postgresDisabled = false;
 let mutationQueue = Promise.resolve();
+const transientStates = new Map<string, WorkspaceState>();
 
 async function getPool() {
   if (!process.env.DATABASE_URL || postgresDisabled) return null;
@@ -47,7 +48,7 @@ async function readFileState(companyId: string) {
     const all = JSON.parse(raw) as Record<string, WorkspaceState>;
     return all[companyId] ?? null;
   } catch {
-    return null;
+    return transientStates.get(companyId) ?? null;
   }
 }
 
@@ -81,7 +82,11 @@ export async function getWorkspace(companyId = defaultCompanyId): Promise<Worksp
   const existing = await readFileState(companyId);
   if (existing) return existing;
   const initial = createInitialState(companyId);
-  await writeFileState(companyId, initial);
+  try {
+    await writeFileState(companyId, initial);
+  } catch {
+    transientStates.set(companyId, initial);
+  }
   return initial;
 }
 
@@ -97,7 +102,11 @@ export async function saveWorkspace(companyId: string, state: WorkspaceState) {
     return state;
   }
 
-  await writeFileState(companyId, state);
+  try {
+    await writeFileState(companyId, state);
+  } catch {
+    transientStates.set(companyId, state);
+  }
   return state;
 }
 

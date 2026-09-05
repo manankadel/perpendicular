@@ -9,3 +9,4 @@ data/workspace-state.json
 data/workspace-state.tmp
 coverage/
 *.tsbuildinfo
+.vercel
