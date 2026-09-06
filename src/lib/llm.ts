@@ -24,12 +24,14 @@ export async function generateEmployeeReply(
   const citations = relevant.length > 0 ? relevant.map((document) => document.name) : ["Employee system prompt"];
   const baseUrl = (process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434").replace(/\/$/, "");
   const model = process.env.OLLAMA_MODEL || "qwen2.5:3b";
+  const configuredTimeout = Number(process.env.OLLAMA_TIMEOUT_MS || "60000");
+  const timeoutMs = Number.isFinite(configuredTimeout) ? Math.min(Math.max(configuredTimeout, 5000), 120000) : 60000;
   const context = relevant.map((document) => `SOURCE: ${document.name}\n${trimForPrompt(document.content)}`).join("\n\n");
 
   if (process.env.DISABLE_OLLAMA !== "true") {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 18000);
       const response = await fetch(`${baseUrl}/api/chat`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -37,7 +39,7 @@ export async function generateEmployeeReply(
           model,
           stream: false,
           think: false,
-          options: { temperature: 0.35 },
+          options: { temperature: 0.35, num_predict: 320 },
           messages: [
             { role: "system", content: `${employee.systemPrompt}\n\nUse only the workspace context below when it is relevant. If it is not enough, say so. Finish with one clear next action.\n\n${context || "No matching workspace context was found."}` },
             { role: "user", content: message },
@@ -53,6 +55,8 @@ export async function generateEmployeeReply(
       }
     } catch {
       // Offline fallback is intentional: the product must stay usable without a model daemon.
+    } finally {
+      clearTimeout(timeout);
     }
   }
 

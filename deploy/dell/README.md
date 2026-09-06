@@ -20,6 +20,7 @@ This is the deployment note for the Blueblood in-house server. It does not modif
 DATABASE_URL=postgresql://blueblood:<password>@postgres:5432/perpendicular
 OLLAMA_BASE_URL=http://host.docker.internal:11434
 OLLAMA_MODEL=qwen2.5:3b
+OLLAMA_TIMEOUT_MS=60000
 CRON_SECRET=<long-random-secret>
 BLUEBLOOD_ID_ISSUER=https://id.bluebloodstudio.com
 BLUEBLOOD_ID_JWKS_URL=https://id.bluebloodstudio.com/api/.well-known/jwks.json
