@@ -13,33 +13,31 @@ import {
 } from "@/lib/domain";
 import { generateEmployeeReply } from "@/lib/llm";
 import { getWorkspace, updateWorkspace } from "@/lib/server-store";
-import { authenticateRequest, getLoginUrl, IdentityError } from "@/lib/identity";
+import { authenticateRequest, getLoginUrl, IdentityError, type IdentityContext } from "@/lib/identity";
 import { hasPermission } from "@/lib/route-auth";
 import { listIntegrationSummaries, recordAuditEvent } from "@/lib/integration-store";
 import { researchPersonCompany, researchWebsite } from "@/lib/public-research";
 import { sameOrigin } from "@/lib/security";
+import { corsHeadersFor } from "@/lib/cors";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const corsHeaders = {
-  "access-control-allow-origin": process.env.PERPENDICULAR_WEB_ORIGIN || "https://perpendicular.bluebloodstudio.com",
-  "access-control-allow-credentials": "true",
-  "access-control-allow-headers": "authorization, content-type, x-company-id, x-organization-slug, x-api-key",
-  "access-control-allow-methods": "GET, POST, OPTIONS",
-  vary: "Origin",
-};
-
-const json = (body: unknown, init?: ResponseInit) => NextResponse.json(body, {
+const json = (body: unknown, init?: ResponseInit): NextResponse => NextResponse.json(body, {
   ...init,
-  headers: { ...corsHeaders, ...init?.headers },
+  headers: { ...corsHeadersFor(), ...init?.headers },
 });
 
-export function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: corsHeaders });
+function applyCors(response: Response, request: Request) {
+  for (const [name, value] of Object.entries(corsHeadersFor(request))) response.headers.set(name, value);
+  return response;
 }
 
-async function getIdentity(request: Request) {
+export function OPTIONS(request: Request) {
+  return new NextResponse(null, { status: 204, headers: corsHeadersFor(request) });
+}
+
+async function getIdentity(request: Request): Promise<{ context: IdentityContext } | { response: Response }> {
   try {
     return { context: await authenticateRequest(request) };
   } catch (error) {
@@ -114,7 +112,7 @@ function onboardingGoal(value: unknown): OnboardingGoal {
   return (["revenue", "delivery", "content", "support"] as const).includes(value as OnboardingGoal) ? value as OnboardingGoal : "revenue";
 }
 
-export async function GET(request: Request) {
+async function getWorkspaceRoute(request: Request) {
   const identity = await getIdentity(request);
   if ("response" in identity) return identity.response;
   try {
@@ -131,7 +129,11 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+export async function GET(request: Request) {
+  return applyCors(await getWorkspaceRoute(request), request);
+}
+
+async function postWorkspace(request: Request): Promise<Response> {
   if (!sameOrigin(request) && !request.headers.get("x-api-key") && !(request.headers.get("authorization") || "").startsWith("Bearer pp_")) return json({ error: "Cross-origin mutation rejected." }, { status: 403 });
   const identity = await getIdentity(request);
   if ("response" in identity) return identity.response;
@@ -468,4 +470,8 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Action failed.";
     return json({ error: message }, { status: 400 });
   }
+}
+
+export async function POST(request: Request) {
+  return applyCors(await postWorkspace(request), request);
 }

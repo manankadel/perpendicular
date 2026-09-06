@@ -1,4 +1,4 @@
-import { corsHeaders, corsJson } from "@/lib/cors";
+import { corsHeadersFor, corsJson } from "@/lib/cors";
 import { addActivity, createId, timestamp, type WorkspaceState } from "@/lib/domain";
 import { listIntegrationSummaries, recordAuditEvent } from "@/lib/integration-store";
 import { generateEmployeeReply } from "@/lib/llm";
@@ -31,22 +31,22 @@ export async function POST(request: Request) {
   const identity = await identityOrResponse(request);
   if ("response" in identity) return identity.response;
   let body: { jsonrpc?: string; id?: string | number; method?: string; params?: { name?: string; arguments?: Record<string, unknown> } };
-  try { body = await request.json() as typeof body; } catch { return corsJson({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Invalid JSON." } }, { status: 400 }); }
+  try { body = await request.json() as typeof body; } catch { return corsJson({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Invalid JSON." } }, { status: 400 }, request); }
   const id = body.id ?? null;
   try {
-    if (body.method === "initialize") return corsJson({ jsonrpc: "2.0", id, result: { protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "perpendicular", version: "1.0.0" } } });
-    if (body.method === "notifications/initialized") return new Response(null, { status: 202, headers: corsHeaders });
-    if (body.method === "tools/list") return corsJson({ jsonrpc: "2.0", id, result: { tools } });
+    if (body.method === "initialize") return corsJson({ jsonrpc: "2.0", id, result: { protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "perpendicular", version: "1.0.0" } } }, undefined, request);
+    if (body.method === "notifications/initialized") return new Response(null, { status: 202, headers: corsHeadersFor(request) });
+    if (body.method === "tools/list") return corsJson({ jsonrpc: "2.0", id, result: { tools } }, undefined, request);
     if (body.method !== "tools/call") throw new Error("Unsupported MCP method.");
     const name = body.params?.name;
     const args = body.params?.arguments || {};
     if (name === "workspace_get") {
       if (!hasPermission(identity.context, "workspace:read")) throw new Error("Permission denied.");
-      return corsJson({ jsonrpc: "2.0", id, result: result(await getWorkspace(identity.context.workspaceId)) });
+      return corsJson({ jsonrpc: "2.0", id, result: result(await getWorkspace(identity.context.workspaceId)) }, undefined, request);
     }
     if (name === "integrations_list") {
       if (!hasPermission(identity.context, "workspace:read")) throw new Error("Permission denied.");
-      return corsJson({ jsonrpc: "2.0", id, result: result(await listIntegrationSummaries(identity.context.workspaceId)) });
+      return corsJson({ jsonrpc: "2.0", id, result: result(await listIntegrationSummaries(identity.context.workspaceId)) }, undefined, request);
     }
     if (name === "employee_chat") {
       if (!hasPermission(identity.context, "workspace:read")) throw new Error("Permission denied.");
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
         return workspace;
       });
       await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.employee_chat", resourceType: "employee", resourceId: employeeId });
-      return corsJson({ jsonrpc: "2.0", id, result: result({ content: generated.content, citations: generated.citations, provider: generated.provider, state }) });
+      return corsJson({ jsonrpc: "2.0", id, result: result({ content: generated.content, citations: generated.citations, provider: generated.provider, state }) }, undefined, request);
     }
     if (name === "employee_run") {
       if (!hasPermission(identity.context, "workspace:write")) throw new Error("Permission denied.");
@@ -82,13 +82,12 @@ export async function POST(request: Request) {
         return workspace;
       });
       await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.employee_run", resourceType: "employee", resourceId: employeeId });
-      return corsJson({ jsonrpc: "2.0", id, result: result({ output: generated.content, provider: generated.provider, state }) });
+      return corsJson({ jsonrpc: "2.0", id, result: result({ output: generated.content, provider: generated.provider, state }) }, undefined, request);
     }
     throw new Error("Unknown MCP tool.");
   } catch (error) {
-    return corsJson({ jsonrpc: "2.0", id, error: { code: -32000, message: error instanceof Error ? error.message : "MCP request failed." } }, { status: 400 });
+    return corsJson({ jsonrpc: "2.0", id, error: { code: -32000, message: error instanceof Error ? error.message : "MCP request failed." } }, { status: 400 }, request);
   }
 }
 
-export function OPTIONS() { return new Response(null, { status: 204, headers: corsHeaders }); }
-
+export function OPTIONS(request: Request) { return new Response(null, { status: 204, headers: corsHeadersFor(request) }); }

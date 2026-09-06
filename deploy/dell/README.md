@@ -25,6 +25,8 @@ BLUEBLOOD_ID_ISSUER=https://id.bluebloodstudio.com
 BLUEBLOOD_ID_JWKS_URL=https://id.bluebloodstudio.com/api/.well-known/jwks.json
 BLUEBLOOD_ID_PRODUCT_SLUG=perpendicular
 PERPENDICULAR_WEB_ORIGIN=https://perpendicular.bluebloodstudio.com
+# Exact browser origins allowed to call the API. No wildcard is permitted with credentials.
+PERPENDICULAR_WEB_ORIGINS=https://perpendicular.bluebloodstudio.com,https://perpendicular-nine.vercel.app
 PERPENDICULAR_API_ORIGIN=https://perpendicular-api.bluebloodstudio.com
 GOOGLE_GMAIL_CLIENT_ID=<google-web-client-id>
 GOOGLE_GMAIL_CLIENT_SECRET=<google-web-client-secret>

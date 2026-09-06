@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { isAllowedWebOrigin } from "@/lib/cors";
 
 export function randomToken(bytes = 32) {
   return crypto.randomBytes(bytes).toString("base64url");
@@ -33,7 +34,5 @@ export function decryptSecret(value: string) {
 
 export function sameOrigin(request: Request) {
   const origin = request.headers.get("origin");
-  if (!origin) return true;
-  const allowed = process.env.PERPENDICULAR_WEB_ORIGIN || "https://perpendicular.bluebloodstudio.com";
-  return origin === allowed;
+  return isAllowedWebOrigin(origin);
 }

@@ -5,7 +5,7 @@ import { upsertGmailMessage } from "@/lib/inbox-store";
 import { hasPermission, identityOrResponse, rejectCrossOrigin } from "@/lib/route-auth";
 import { updateWorkspace } from "@/lib/server-store";
 import { addActivity } from "@/lib/domain";
-import { corsHeaders, corsJson } from "@/lib/cors";
+import { corsHeadersFor, corsJson } from "@/lib/cors";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -46,10 +46,10 @@ export async function POST(request: Request) {
     });
     await markIntegrationSynced(identity.context.workspaceId, "gmail");
     await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "gmail.synced", resourceType: "gmail", metadata: { count: messages.length } });
-    return corsJson({ ok: true, count: messages.length, state: updated });
+    return corsJson({ ok: true, count: messages.length, state: updated }, undefined, request);
   } catch (error) {
-    return corsJson({ error: error instanceof Error ? error.message : "Gmail sync failed." }, { status: 400 });
+    return corsJson({ error: error instanceof Error ? error.message : "Gmail sync failed." }, { status: 400 }, request);
   }
 }
 
-export function OPTIONS() { return new Response(null, { status: 204, headers: corsHeaders }); }
+export function OPTIONS(request: Request) { return new Response(null, { status: 204, headers: corsHeadersFor(request) }); }

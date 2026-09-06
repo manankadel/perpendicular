@@ -1,4 +1,4 @@
-import { corsHeaders } from "@/lib/cors";
+import { corsHeadersFor } from "@/lib/cors";
 
 type AuthPayload = Record<string, unknown>;
 type HeadersWithSetCookie = Headers & { getSetCookie?: () => string[] };
@@ -78,7 +78,7 @@ export async function proxyIdentityRequest(request: Request, path: string, allow
     parsed = { message: "Authentication service returned an invalid response." };
   }
   const headers = new Headers({
-    ...corsHeaders,
+    ...corsHeadersFor(request),
     "cache-control": "no-store",
     "content-type": "application/json; charset=utf-8",
     "x-content-type-options": "nosniff",
