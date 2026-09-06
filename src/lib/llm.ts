@@ -39,7 +39,7 @@ export async function generateEmployeeReply(
           model,
           stream: false,
           think: false,
-          options: { temperature: 0.35, num_predict: 320 },
+          options: { temperature: 0.35, num_predict: 128 },
           messages: [
             { role: "system", content: `${employee.systemPrompt}\n\nUse only the workspace context below when it is relevant. If it is not enough, say so. Finish with one clear next action.\n\n${context || "No matching workspace context was found."}` },
             { role: "user", content: message },
