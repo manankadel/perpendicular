@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildFallbackReply, createInitialState, findRelevantDocuments, scoreRun } from "../src/lib/domain";
+import { buildFallbackReply, buildOnboardingArtifacts, createInitialState, findRelevantDocuments, scoreRun } from "../src/lib/domain";
 
 test("seed workspace has the core employee -> knowledge -> run loop", () => {
   const state = createInitialState();
@@ -27,4 +27,23 @@ test("run scoring rewards evidence and ownership without exceeding the rubric", 
   const score = scoreRun("Write a prioritized pipeline report", "Evidence says Meridian is stalled. Next action: Manan owns the rescue.");
   assert.ok(score >= 80);
   assert.ok(score <= 98);
+});
+
+test("onboarding builds one real source and one scoped operator", () => {
+  const result = buildOnboardingArtifacts({
+    companyId: "blueblood-studio",
+    companyName: "Blueblood Studio",
+    goal: "content",
+    discovery: {
+      url: "https://example.com",
+      title: "Blueblood Studio",
+      description: "A design and development studio.",
+      text: "Blueblood Studio builds digital products for ambitious teams. The studio focuses on design, development, and reliable delivery.",
+    },
+  });
+  assert.equal(result.employee.department, "Content");
+  assert.equal(result.document.source, "url");
+  assert.deepEqual(result.document.employeeIds, [result.employee.id]);
+  assert.match(result.employee.systemPrompt, /Blueblood Studio/);
+  assert.match(result.task, /content/i);
 });

@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import {
   addActivity,
+  buildOnboardingArtifacts,
   createId,
+  createOnboardingState,
   scoreRun,
   timestamp,
+  type OnboardingDiscovery,
+  type OnboardingGoal,
   type Employee,
   type WorkspaceState,
 } from "@/lib/domain";
@@ -86,6 +90,30 @@ function makeRun(state: WorkspaceState, employee: Employee, task: string, trigge
   return run;
 }
 
+function inferredCompanyUrl(email: string) {
+  const domain = email.split("@")[1]?.toLowerCase();
+  if (!domain || ["gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "yahoo.com", "icloud.com"].includes(domain)) return null;
+  return `https://${domain}`;
+}
+
+function companyNameFromUrl(url: string) {
+  const host = new URL(url).hostname.replace(/^www\./, "");
+  return host.split(".")[0].replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function companyNameFromDiscovery(discovery: OnboardingDiscovery, fallbackUrl: string | null, workspaceId: string) {
+  const title = discovery.title?.replace(/\s*[|·—–-].*$/, "").trim();
+  if (title) return title.slice(0, 100);
+  if (fallbackUrl) {
+    try { return companyNameFromUrl(fallbackUrl); } catch { /* fall through to the authenticated workspace slug */ }
+  }
+  return workspaceId.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()).slice(0, 100);
+}
+
+function onboardingGoal(value: unknown): OnboardingGoal {
+  return (["revenue", "delivery", "content", "support"] as const).includes(value as OnboardingGoal) ? value as OnboardingGoal : "revenue";
+}
+
 export async function GET(request: Request) {
   const identity = await getIdentity(request);
   if ("response" in identity) return identity.response;
@@ -93,7 +121,11 @@ export async function GET(request: Request) {
     const state = await getWorkspace(identity.context.workspaceId);
     let integrations = state.integrations || [];
     try { integrations = await listIntegrationSummaries(identity.context.workspaceId); } catch { if (process.env.NODE_ENV === "production") throw new Error("Integration storage is not ready."); }
-    return json({ ...state, integrations });
+    return json({
+      ...state,
+      integrations,
+      viewer: { email: identity.context.email, firstName: identity.context.firstName, lastName: identity.context.lastName },
+    });
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : "Workspace storage is unavailable." }, { status: 503 });
   }
@@ -117,6 +149,89 @@ export async function POST(request: Request) {
   if (!hasPermission(identity.context, requiredPermission)) return json({ error: "You do not have permission for this action." }, { status: 403 });
 
   try {
+    if (action === "bootstrap-workspace") {
+      const goal = onboardingGoal(body.goal);
+      const requestedUrl = String(body.companyUrl || "").trim() || inferredCompanyUrl(identity.context.email);
+      const providedDescription = String(body.companyDescription || "").trim();
+      if (providedDescription.length > 100000) throw new Error("The workspace brief is too large. Keep it under 100,000 characters.");
+      let discovery: OnboardingDiscovery;
+      if (requestedUrl) {
+        try {
+          const researched = await researchWebsite(requestedUrl);
+          discovery = researched;
+        } catch (error) {
+          if (!providedDescription) throw error;
+          discovery = { url: null, title: null, description: "Provided by the workspace operator.", text: providedDescription };
+        }
+      } else if (providedDescription) {
+        discovery = { url: null, title: null, description: "Provided by the workspace operator.", text: providedDescription };
+      } else {
+        throw new Error("Add a public company URL or a short description so Perpendicular can build the workspace from real context.");
+      }
+      if (discovery.text.length < 40) throw new Error("The discovery source is too short to build a useful workspace. Add a fuller public page or description.");
+      const companyName = String(body.companyName || "").trim() || companyNameFromDiscovery(discovery, requestedUrl, companyId);
+      const next = await updateWorkspace(companyId, (state) => {
+        if (state.workspace.onboarding.employeeId && state.workspace.onboarding.documentId) return state;
+        const artifacts = buildOnboardingArtifacts({ companyId, companyName, goal, discovery });
+        state.workspace.name = companyName;
+        state.employees.unshift(artifacts.employee);
+        state.documents.unshift(artifacts.document);
+        state.workspace.onboarding = {
+          ...createOnboardingState("ready"),
+          goal,
+          companyUrl: discovery.url,
+          sourceTitle: artifacts.document.name,
+          sourceDescription: artifacts.sourceDescription,
+          discoveredAt: timestamp(),
+          employeeId: artifacts.employee.id,
+          documentId: artifacts.document.id,
+        };
+        addActivity(state, { type: "system", title: `${companyName} was discovered`, detail: `${artifacts.document.name} indexed · ${artifacts.employee.name} is ready for a first brief`, });
+        return state;
+      });
+      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.bootstrap", metadata: { goal, source: discovery.url ? "public_url" : "operator_brief" } }); } catch (error) { if (process.env.NODE_ENV === "production") return json({ error: error instanceof Error ? error.message : "Audit storage is unavailable." }, { status: 503 }); }
+      return json({ state: next, discovery: { title: next.workspace.onboarding.sourceTitle, description: next.workspace.onboarding.sourceDescription, url: next.workspace.onboarding.companyUrl } });
+    }
+
+    if (action === "run-onboarding-brief") {
+      const current = await getWorkspace(companyId);
+      const onboarding = current.workspace.onboarding;
+      const employee = onboarding.employeeId ? findEmployee(current, onboarding.employeeId) : undefined;
+      if (!employee || !onboarding.goal) return json({ error: "Complete workspace discovery before running the first brief." }, { status: 400 });
+      if (onboarding.runId) return json(current);
+      const task = employee.goldenTests[0]?.input || "Review the workspace and propose the three highest-leverage next actions for this week.";
+      const result = await generateEmployeeReply(employee, task, current.documents);
+      const next = await updateWorkspace(companyId, (state) => {
+        if (state.workspace.onboarding.runId) return state;
+        const liveEmployee = findEmployee(state, employee.id);
+        if (!liveEmployee) return state;
+        const run = makeRun(state, liveEmployee, task, "manual", result.content);
+        run.trace[2].detail = `${liveEmployee.model} · ${result.provider}`;
+        state.workspace.onboarding.status = "completed";
+        state.workspace.onboarding.runId = run.id;
+        state.workspace.onboarding.completedAt = run.createdAt;
+        addActivity(state, { type: "run", title: `${liveEmployee.name} delivered the first brief`, detail: `Score ${run.score} · grounded in ${state.documents[0]?.name || "workspace context"}`, });
+        return state;
+      });
+      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.onboarding_run", resourceType: "employee", resourceId: employee.id }); } catch (error) { if (process.env.NODE_ENV === "production") return json({ error: error instanceof Error ? error.message : "Audit storage is unavailable." }, { status: 503 }); }
+      return json(next);
+    }
+
+    if (action === "enable-onboarding-schedule") {
+      const next = await updateWorkspace(companyId, (state) => {
+        const onboarding = state.workspace.onboarding;
+        const employee = onboarding.employeeId ? findEmployee(state, onboarding.employeeId) : undefined;
+        if (!employee || !onboarding.goal) throw new Error("Run the first brief before enabling the daily rhythm.");
+        const task = employee.goldenTests[0]?.input || "Review the workspace and write the highest-leverage next action for this week.";
+        employee.schedule = { enabled: true, cadence: "daily", task, nextRunAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() };
+        state.workspace.onboarding.scheduleEnabled = true;
+        addActivity(state, { type: "employee", title: `${employee.name} is now on a daily rhythm`, detail: "The Dell heartbeat will run the same grounded brief each day", });
+        return state;
+      });
+      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.onboarding_schedule" }); } catch (error) { if (process.env.NODE_ENV === "production") return json({ error: error instanceof Error ? error.message : "Audit storage is unavailable." }, { status: 503 }); }
+      return json(next);
+    }
+
     if (action === "chat") {
       const employeeId = String(body.employeeId || "");
       const message = String(body.message || "").trim();

@@ -29,10 +29,11 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import type { Activity as ActivityRecord, Employee, SmartList, SmartRow, WorkspaceState } from "@/lib/domain";
+import type { Activity as ActivityRecord, Employee, OnboardingGoal, SmartList, SmartRow, WorkspaceState } from "@/lib/domain";
 
 type View = "overview" | "employees" | "knowledge" | "lists" | "sequences" | "inbox" | "activity" | "settings";
 type Mutation = (action: string, payload?: Record<string, unknown>, success?: string) => Promise<void>;
+type Viewer = { email: string; firstName: string; lastName: string };
 
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
 const apiPath = (path: string) => `${apiBase}${path}`;
@@ -208,6 +209,39 @@ function ActivityView({ state }: { state: WorkspaceState }) {
   return <><PageHeading eyebrow="Proof of work" title="Everything leaves a trace." subtitle="Autonomy only earns trust when you can inspect what happened, why it happened, and what it cost."><span className="server-status"><ShieldCheck size={13} color="var(--mint)" />Company-scoped audit log</span></PageHeading><section className="panel"><PanelHeader title="Activity log" caption={`${state.activity.length} recent events · newest first`} /><div className="activity-list">{state.activity.map((item) => <div className="activity-row" key={item.id}><div className="activity-icon"><ActivityGlyph type={item.type} /></div><div><div className="activity-title">{item.title}</div><div className="activity-detail">{item.detail}</div></div><div className="activity-time">{relativeTime(item.createdAt)}</div></div>)}</div></section></>;
 }
 
+function OnboardingView({ state, viewer, mutate, busyAction }: { state: WorkspaceState; viewer: Viewer | null; mutate: Mutation; busyAction: string | null }) {
+  const onboarding = state.workspace.onboarding;
+  const [goal, setGoal] = useState<OnboardingGoal>(onboarding.goal || "revenue");
+  const inferredUrl = viewer?.email.split("@")[1] && !["gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "yahoo.com", "icloud.com"].includes(viewer.email.split("@")[1].toLowerCase())
+    ? `https://${viewer.email.split("@")[1].toLowerCase()}`
+    : "";
+  const [companyUrl, setCompanyUrl] = useState(onboarding.companyUrl || inferredUrl);
+  const [companyDescription, setCompanyDescription] = useState("");
+  const goalOptions: Array<{ id: OnboardingGoal; label: string; detail: string }> = [
+    { id: "revenue", label: "Find more revenue", detail: "Prioritize pipeline, positioning, and next moves." },
+    { id: "delivery", label: "Run delivery better", detail: "Turn active work into clear owners and deadlines." },
+    { id: "content", label: "Ship better content", detail: "Build a grounded content rhythm from your real voice." },
+    { id: "support", label: "Protect customer experience", detail: "Spot support risks and make the next response obvious." },
+  ];
+  const discovering = busyAction === "bootstrap-workspace";
+  const briefing = busyAction === "run-onboarding-brief";
+  const scheduling = busyAction === "enable-onboarding-schedule";
+  const operator = onboarding.employeeId ? state.employees.find((employee) => employee.id === onboarding.employeeId) : null;
+  const firstRun = onboarding.runId ? state.runs.find((run) => run.id === onboarding.runId) : null;
+  const source = onboarding.documentId ? state.documents.find((document) => document.id === onboarding.documentId) : null;
+  const gmail = state.integrations?.find((integration) => integration.provider === "gmail");
+
+  if (onboarding.status === "not_started") {
+    return <div className="onboarding-shell"><div className="onboarding-intro"><div className="eyebrow">Perpendicular setup</div><h1 className="page-title">Let the system learn the work.</h1><p className="page-subtitle">Give Perpendicular one real source and a priority. It will build the first operator, ground it in your context, and prove the loop before asking you to automate anything.</p><div className="onboarding-steps"><div className="onboarding-step active"><span>01</span><div><strong>Discover</strong><small>Read your real context</small></div></div><div className="onboarding-step"><span>02</span><div><strong>Prove</strong><small>Run a grounded brief</small></div></div><div className="onboarding-step"><span>03</span><div><strong>Repeat</strong><small>Turn on the daily rhythm</small></div></div></div></div><section className="onboarding-card"><div className="onboarding-card-heading"><div><div className="eyebrow">One source. One operator. One proof.</div><h2>What should Perpendicular own first?</h2></div><span className="onboarding-badge">No fake data</span></div><div className="goal-grid">{goalOptions.map((option) => <button className={`goal-option ${goal === option.id ? "selected" : ""}`} onClick={() => setGoal(option.id)} key={option.id}><span className="goal-radio" /> <span><strong>{option.label}</strong><small>{option.detail}</small></span></button>)}</div><div className="field"><label htmlFor="onboarding-url">Public company URL</label><input id="onboarding-url" type="url" value={companyUrl} onChange={(event) => setCompanyUrl(event.target.value)} placeholder="https://yourcompany.com" /><small className="field-hint">We inspect only this public page. No credentials or private mailbox data is read.</small></div><div className="field"><label htmlFor="onboarding-description">If you do not have a public site, describe the work</label><textarea id="onboarding-description" value={companyDescription} onChange={(event) => setCompanyDescription(event.target.value)} placeholder="Optional fallback: what your team sells, who it serves, and what is currently stuck." /></div><button className="button-primary onboarding-submit" disabled={discovering || (!companyUrl.trim() && companyDescription.trim().length < 40)} onClick={() => void mutate("bootstrap-workspace", { goal, companyUrl: companyUrl.trim(), companyDescription: companyDescription.trim() }, "Workspace discovered. Your first operator is ready.")}>{discovering ? "Reading your workspace…" : "Discover and build my operator"}<ArrowUpRight size={13} /></button><p className="onboarding-footnote">This creates one real knowledge source and one real employee in your Dell-backed workspace. It does not invent leads, send email, or enable automation.</p></section></div>;
+  }
+
+  if (onboarding.status === "ready") {
+    return <div className="onboarding-shell"><div className="onboarding-intro"><div className="eyebrow">Discovery complete</div><h1 className="page-title">Your first operator is ready.</h1><p className="page-subtitle">The source below was fetched and persisted on the Dell. Review the scope, then run the first brief through your local model.</p><div className="onboarding-steps"><div className="onboarding-step complete"><span>✓</span><div><strong>Discover</strong><small>Source indexed</small></div></div><div className="onboarding-step active"><span>02</span><div><strong>Prove</strong><small>Run a grounded brief</small></div></div><div className="onboarding-step"><span>03</span><div><strong>Repeat</strong><small>Turn on the daily rhythm</small></div></div></div></div><section className="onboarding-card"><div className="discovery-summary"><div className="discovery-icon">{operator?.avatar || "AI"}</div><div><div className="eyebrow">{operator?.department || "Operations"} operator</div><h2>{operator?.name || "Your operator"} · {operator?.title || "Workspace operator"}</h2><p>{operator?.systemPrompt}</p></div></div><div className="discovery-facts"><div><span>Source</span><strong>{source?.name || onboarding.sourceTitle || "Indexed workspace source"}</strong><small>{source?.chunks || 0} chunks · {source?.source === "url" ? "public URL" : "operator brief"}</small></div><div><span>Goal</span><strong>{goalOptions.find((option) => option.id === onboarding.goal)?.label || "Workspace priorities"}</strong><small>Scoped to this company only</small></div><div><span>Connection</span><strong>{gmail?.status === "connected" ? "Gmail connected" : "Gmail stays off"}</strong><small>{gmail?.status === "connected" ? gmail.accountEmail || "OAuth mailbox" : "Connect later in Settings"}</small></div></div><div className="onboarding-action-row"><button className="button-primary" disabled={briefing} onClick={() => void mutate("run-onboarding-brief", {}, "First brief completed and scored.")}>{briefing ? "Running the local operator…" : "Run my first brief"}<Zap size={13} /></button></div><p className="onboarding-footnote">The brief is the proof step. If Ollama is unavailable, Perpendicular will stop and tell you instead of showing a made-up result.</p></section></div>;
+  }
+
+  return <div className="onboarding-shell"><div className="onboarding-intro"><div className="eyebrow">First proof complete</div><h1 className="page-title">Now make it repeat.</h1><p className="page-subtitle">{operator?.name || "Your operator"} produced a persisted run with a score and trace. Keep it manual, or let the Dell wake it once a day.</p><div className="onboarding-steps"><div className="onboarding-step complete"><span>✓</span><div><strong>Discover</strong><small>Source indexed</small></div></div><div className="onboarding-step complete"><span>✓</span><div><strong>Prove</strong><small>Run scored</small></div></div><div className={`onboarding-step ${onboarding.scheduleEnabled ? "complete" : "active"}`}><span>{onboarding.scheduleEnabled ? "✓" : "03"}</span><div><strong>Repeat</strong><small>{onboarding.scheduleEnabled ? "Daily rhythm on" : "Optional daily rhythm"}</small></div></div></div></div><section className="onboarding-card"><div className="run-proof"><div className="run-proof-head"><div><div className="eyebrow">Persisted run · {firstRun?.trigger || "manual"}</div><h2>{firstRun?.task || "First workspace brief"}</h2></div><div className="proof-score">{firstRun?.score ?? "—"}<small>score</small></div></div><div className="run-proof-output">{firstRun?.output || "The run completed, but its output could not be loaded."}</div><div className="trace-strip">{(firstRun?.trace || []).map((step) => <span key={step.label}><Check size={11} />{step.label}<small>{step.durationMs}ms · {step.cost} credit</small></span>)}</div></div><div className="onboarding-action-row"><button className="button-primary" disabled={scheduling || onboarding.scheduleEnabled} onClick={() => void mutate("enable-onboarding-schedule", {}, "Daily rhythm enabled on the Dell heartbeat.")}>{scheduling ? "Enabling rhythm…" : onboarding.scheduleEnabled ? "Daily rhythm enabled" : "Keep this running daily"}<CalendarClock size={13} /></button></div><p className="onboarding-footnote">You can change or pause the schedule from Employees. Gmail remains approval-gated until you explicitly connect and test it.</p></section></div>;
+}
+
 function SettingsView({ state }: { state: WorkspaceState }) {
   const gmail = state.integrations?.find((integration) => integration.provider === "gmail");
   const [testRecipient, setTestRecipient] = useState("");
@@ -238,6 +272,7 @@ function Modal({ title, description, onClose, children }: { title: string; descr
 
 export default function PerpendicularConsole() {
   const [state, setState] = useState<WorkspaceState | null>(null);
+  const [viewer, setViewer] = useState<Viewer | null>(null);
   const [loginUrl, setLoginUrl] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<View>("overview");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("emp-atlas");
@@ -260,15 +295,16 @@ export default function PerpendicularConsole() {
   useEffect(() => {
     fetch(apiPath("/api/workspace"), { credentials: "include" })
       .then(async (response) => {
-        const data = await response.json().catch(() => ({})) as WorkspaceState & { error?: string; loginUrl?: string };
+        const data = await response.json().catch(() => ({})) as WorkspaceState & { error?: string; loginUrl?: string; viewer?: Viewer };
         if (response.status === 401) {
           setLoginUrl(data.loginUrl || "/login");
           return null;
         }
         if (!response.ok) throw new Error(data.error || "Workspace failed to load.");
+        setViewer(data.viewer || null);
         return data;
       })
-      .then((nextState) => { if (nextState) setState(nextState); })
+        .then((nextState) => { if (nextState) setState(nextState); })
       .catch(() => setNotice("The workspace could not load. Start the app server and refresh."));
   }, []);
 
@@ -282,14 +318,15 @@ export default function PerpendicularConsole() {
     setBusyAction(action);
     try {
       const response = await fetch(apiPath("/api/workspace"), { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...payload }) });
-      const data = (await response.json()) as { state?: WorkspaceState; error?: string; loginUrl?: string };
+      const data = (await response.json()) as { state?: WorkspaceState; error?: string; loginUrl?: string; workspace?: WorkspaceState["workspace"] };
       if (response.status === 401) {
         setLoginUrl(data.loginUrl || "/login");
         setState(null);
       }
-      if (!response.ok || !data.state) throw new Error(data.error || "Action failed.");
-      setState(data.state);
-      if (data.state.employees.length && !data.state.employees.some((employee) => employee.id === selectedEmployeeId)) setSelectedEmployeeId(data.state.employees[0].id);
+      const nextState = data.state || (data.workspace ? data as WorkspaceState : null);
+      if (!response.ok || !nextState) throw new Error(data.error || "Action failed.");
+      setState(nextState);
+      if (nextState.employees.length && !nextState.employees.some((employee) => employee.id === selectedEmployeeId)) setSelectedEmployeeId(nextState.employees[0].id);
       setNotice(success || "Saved.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Action failed.");
@@ -354,6 +391,8 @@ export default function PerpendicularConsole() {
     if (loginUrl) return <div className="loading"><div><h1>Sign in to Perpendicular</h1><p>Sign in to continue to your workspace.</p><a className="button-primary" href={loginUrl}>Sign in <ArrowUpRight size={13} /></a></div></div>;
     return <div className="loading">Loading the workspace…</div>;
   }
+
+  if (state.workspace.onboarding.status !== "completed") return <OnboardingView state={state} viewer={viewer} mutate={mutate} busyAction={busyAction} />;
 
   return <div className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark" /><span>perpendicular<span className="brand-meta">open work system</span></span></div><div className="nav-scroll">{navGroups.map((group) => <div className="nav-group" key={group.label}><div className="nav-label">{group.label}</div>{group.items.map((item) => { const Icon = item.icon; const count = navCount(item.id, state); return <button className={`nav-item ${activeView === item.id ? "active" : ""}`} onClick={() => setActiveView(item.id)} key={item.id}><Icon size={15} strokeWidth={1.8} /><span>{item.label}</span>{count !== null ? <span className="nav-count">{count}</span> : null}</button>; })}</div>)}</div><div className="sidebar-footer"><div className="server-chip"><span className="status-dot" />Dell node healthy</div><small>Ollama local runtime<br />Postgres persistence · LAN / Dell</small></div></aside><div className="main-shell"><div className="mobile-topbar">{navigation.map((item) => { const Icon = item.icon; return <button className={`nav-item ${activeView === item.id ? "active" : ""}`} onClick={() => setActiveView(item.id)} key={item.id}><Icon size={13} /><span>{item.label}</span></button>; })}</div><header className="topbar"><div className="crumbs"><strong>{state.workspace.name}</strong><span className="slash">/</span><span>{activeLabel}</span></div><div className="top-actions"><div className="server-status"><span className="status-dot" />Self-hosted · online</div><button className="command-button" onClick={() => { setActiveView("overview"); window.setTimeout(() => document.querySelector<HTMLTextAreaElement>(".chat-compose textarea")?.focus(), 0); }}><Sparkles size={13} />Ask the system</button></div></header><main className="content">{activeView === "overview" ? <Overview state={state} selectedEmployeeId={selectedEmployeeId} setSelectedEmployeeId={setSelectedEmployeeId} setView={setActiveView} chatInput={chatInput} setChatInput={setChatInput} chatBusy={busyAction === "chat"} onSend={sendChat} /> : activeView === "employees" ? <EmployeesView state={state} selectedEmployeeId={selectedEmployeeId} setSelectedEmployeeId={setSelectedEmployeeId} mutate={mutate} setShowHire={setShowHire} /> : activeView === "knowledge" ? <KnowledgeView state={state} setShowDocument={setShowDocument} /> : activeView === "lists" ? <ListsView state={state} mutate={mutate} setShowList={setShowList} setShowLead={setShowLead} /> : activeView === "sequences" ? <SequencesView state={state} mutate={mutate} setShowSequence={setShowSequence} /> : activeView === "inbox" ? <InboxView state={state} mutate={mutate} setShowTicket={setShowTicket} /> : activeView === "activity" ? <ActivityView state={state} /> : <SettingsView state={state} />}</main></div>{notice ? <div className="notice" role="status">{notice}</div> : null}
     {showHire ? <Modal title="Hire an employee" description="A title is enough to start. The prompt is versioned from the first save." onClose={() => setShowHire(false)}><form className="form-card" onSubmit={submitEmployee}><div className="field"><label htmlFor="employee-name">Name</label><input id="employee-name" value={employeeForm.name} onChange={(event) => setEmployeeForm({ ...employeeForm, name: event.target.value })} placeholder="e.g. Atlas" /></div><div className="field"><label htmlFor="employee-title">Title *</label><input id="employee-title" required value={employeeForm.title} onChange={(event) => setEmployeeForm({ ...employeeForm, title: event.target.value })} placeholder="e.g. Revenue intelligence lead" /></div><div className="field"><label htmlFor="employee-department">Department</label><select id="employee-department" value={employeeForm.department} onChange={(event) => setEmployeeForm({ ...employeeForm, department: event.target.value })}><option>Growth</option><option>Content</option><option>Support</option><option>Operations</option></select></div><div className="field"><label htmlFor="employee-prompt">System prompt</label><textarea id="employee-prompt" value={employeeForm.systemPrompt} onChange={(event) => setEmployeeForm({ ...employeeForm, systemPrompt: event.target.value })} placeholder="Optional. The system writes a safe default if blank." /></div><div className="form-actions"><button type="button" className="button-secondary" onClick={() => setShowHire(false)}>Cancel</button><button type="submit" className="button-primary" disabled={busyAction === "create-employee"}>Create employee <ArrowUpRight size={13} /></button></div></form></Modal> : null}

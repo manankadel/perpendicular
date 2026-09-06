@@ -2,7 +2,7 @@ import "server-only";
 
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { createInitialState, type WorkspaceState } from "@/lib/domain";
+import { createInitialState, normalizeWorkspaceState, type WorkspaceState } from "@/lib/domain";
 import { getDatabase } from "@/lib/database";
 
 const dataDirectory = path.join(process.cwd(), "data");
@@ -76,7 +76,11 @@ export async function getWorkspace(companyId = defaultCompanyId): Promise<Worksp
       "select state from perpendicular_workspace_state where company_id = $1",
       [companyId],
     );
-    if (result.rows[0]?.state) return result.rows[0].state;
+    if (result.rows[0]?.state) {
+      const normalized = normalizeWorkspaceState(result.rows[0].state, companyId);
+      if (!result.rows[0].state.workspace.onboarding) await saveWorkspace(companyId, normalized);
+      return normalized;
+    }
     const initial = createInitialState(companyId);
     await saveWorkspace(companyId, initial);
     return initial;
@@ -85,7 +89,7 @@ export async function getWorkspace(companyId = defaultCompanyId): Promise<Worksp
   if (!allowFileFallback()) throw new Error("Production database is not configured or unavailable.");
 
   const existing = await readFileState(companyId);
-  if (existing) return existing;
+  if (existing) return normalizeWorkspaceState(existing, companyId);
   const initial = createInitialState(companyId);
   try {
     await writeFileState(companyId, initial);

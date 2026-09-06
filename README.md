@@ -1,12 +1,13 @@
 # Perpendicular
 
-Perpendicular is an open-source AI work system for small teams. It turns a named employee, scoped knowledge, a scheduled task, and a visible evaluation trace into one operational loop.
+Perpendicular is an open-source AI work system for small teams. It turns a real workspace source, a named employee, scoped knowledge, a scheduled task, and a visible evaluation trace into one operational loop.
 
 The production shape is deliberate: Vercel serves the browser UI; the Dell runs the API, Postgres, Ollama, and durable integration data. Blueblood ID is the identity authority. Gmail is an explicit OAuth connection with encrypted refresh-token storage, persisted inbox messages, and reply-pause behavior.
 
 ## Functional surface
 
 - Perpendicular-hosted sign-in with password and MFA handoff to Blueblood ID, plus product membership and workspace isolation.
+- First-run workspace discovery: infer a public company URL from the signed-in business email, fetch real public context, create a goal-specific operator, and run a persisted first brief before showing the workbench.
 - Employee creation, prompt versions, golden evaluations, chat, manual runs, schedules, and heartbeat execution.
 - Knowledge capture from pasted text or a public URL, with scoped retrieval and citations.
 - Smart List creation, lead import, public company research, dedupe, credit accounting, and sequence enrollment gates.
@@ -41,6 +42,8 @@ npm audit --omit=dev --audit-level=high
 ```
 
 The API contract is available at `/api/docs`. The launch runbook and trust boundaries are in [`docs/production-architecture.md`](docs/production-architecture.md) and [`deploy/dell/README.md`](deploy/dell/README.md).
+
+New workspaces do not receive demo employees, leads, content, or metrics. Onboarding creates only what the operator requested and can prove: one discovered source, one scoped employee, and one real run. If the public URL cannot be fetched, the operator can provide a source brief; if Ollama is unavailable, the first run stops with a configuration error instead of rendering a placeholder.
 
 ## Required provider setup
 

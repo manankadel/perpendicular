@@ -151,6 +151,22 @@ export type Activity = {
   createdAt: string;
 };
 
+export type OnboardingGoal = "revenue" | "delivery" | "content" | "support";
+
+export type OnboardingState = {
+  status: "not_started" | "ready" | "completed";
+  goal: OnboardingGoal | null;
+  companyUrl: string | null;
+  sourceTitle: string | null;
+  sourceDescription: string | null;
+  discoveredAt: string | null;
+  employeeId: string | null;
+  documentId: string | null;
+  runId: string | null;
+  scheduleEnabled: boolean;
+  completedAt: string | null;
+};
+
 export type WorkspaceState = {
   workspace: {
     id: string;
@@ -160,6 +176,7 @@ export type WorkspaceState = {
     dataCredits: { remaining: number; purchased: number };
     region: "LAN / Dell";
     model: string;
+    onboarding: OnboardingState;
   };
   employees: Employee[];
   documents: DocumentRecord[];
@@ -182,6 +199,34 @@ const now = () => new Date().toISOString();
 
 const id = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 
+export function createOnboardingState(status: OnboardingState["status"] = "not_started"): OnboardingState {
+  return {
+    status,
+    goal: null,
+    companyUrl: null,
+    sourceTitle: null,
+    sourceDescription: null,
+    discoveredAt: null,
+    employeeId: null,
+    documentId: null,
+    runId: null,
+    scheduleEnabled: false,
+    completedAt: null,
+  };
+}
+
+export function normalizeWorkspaceState(state: WorkspaceState, companyId: string) {
+  const onboarding = state.workspace.onboarding || createOnboardingState(state.employees.length ? "completed" : "not_started");
+  return {
+    ...state,
+    workspace: {
+      ...state.workspace,
+      id: state.workspace.id || companyId,
+      onboarding,
+    },
+  };
+}
+
 function createEmptyState(companyId: string): WorkspaceState {
   const aiCredits = Number(process.env.INITIAL_AI_CREDITS || 1000);
   const dataCredits = Number(process.env.INITIAL_DATA_CREDITS || 500);
@@ -194,6 +239,7 @@ function createEmptyState(companyId: string): WorkspaceState {
       dataCredits: { remaining: dataCredits, purchased: dataCredits },
       region: "LAN / Dell",
       model: process.env.OLLAMA_MODEL ? `Ollama · ${process.env.OLLAMA_MODEL}` : "Ollama · not configured",
+      onboarding: createOnboardingState(),
     },
     employees: [],
     documents: [],
@@ -331,6 +377,19 @@ export function createInitialState(companyId = "blueblood-demo"): WorkspaceState
       dataCredits: { remaining: 748, purchased: 1000 },
       region: "LAN / Dell",
       model: "Ollama · qwen2.5:3b",
+      onboarding: {
+        ...createOnboardingState("completed"),
+        goal: "revenue",
+        companyUrl: "https://bluebloodstudio.com",
+        sourceTitle: "Blueblood ICP & Positioning",
+        sourceDescription: "Demo workspace seeded for local development.",
+        discoveredAt: timestamp,
+        employeeId: atlas.id,
+        documentId: "doc-icp",
+        runId: "run-atlas-1",
+        scheduleEnabled: true,
+        completedAt: timestamp,
+      },
     },
     employees,
     documents: [
@@ -635,4 +694,93 @@ export function createId(prefix: string) {
 
 export function timestamp() {
   return now();
+}
+
+export type OnboardingDiscovery = {
+  url: string | null;
+  title: string | null;
+  description: string | null;
+  text: string;
+};
+
+const onboardingGoalDetails: Record<OnboardingGoal, { title: string; department: Department; name: string; task: string; expected: string }> = {
+  revenue: {
+    title: "Revenue Operator",
+    department: "Growth",
+    name: "Orbit",
+    task: "Review the discovered company context and propose the three highest-leverage revenue actions for this week.",
+    expected: "Grounded revenue priorities with owners and next actions",
+  },
+  delivery: {
+    title: "Delivery Operator",
+    department: "Operations",
+    name: "Relay",
+    task: "Review the discovered company context and propose the three highest-leverage delivery actions for this week.",
+    expected: "Grounded delivery priorities with owners and next actions",
+  },
+  content: {
+    title: "Content Operator",
+    department: "Content",
+    name: "Signal",
+    task: "Review the discovered company context and propose the three highest-leverage content actions for this week.",
+    expected: "Grounded content priorities with owners and next actions",
+  },
+  support: {
+    title: "Support Operator",
+    department: "Support",
+    name: "Harbor",
+    task: "Review the discovered company context and propose the three highest-leverage support actions for this week.",
+    expected: "Grounded support priorities with owners and next actions",
+  },
+};
+
+export function onboardingGoalDetailsFor(goal: OnboardingGoal) {
+  return onboardingGoalDetails[goal];
+}
+
+export function buildOnboardingArtifacts(args: {
+  companyId: string;
+  companyName: string;
+  goal: OnboardingGoal;
+  discovery: OnboardingDiscovery;
+  createdAt?: string;
+}) {
+  const createdAt = args.createdAt || timestamp();
+  const goalDetails = onboardingGoalDetails[args.goal];
+  const sourceName = args.discovery.title ? `Company discovery · ${args.discovery.title}` : `Company discovery · ${args.companyName}`;
+  const sourceDescription = args.discovery.description || `Public company context discovered for ${args.companyName}.`;
+  const document: DocumentRecord = {
+    id: createId("doc"),
+    name: sourceName.slice(0, 140),
+    source: args.discovery.url ? "url" : "upload",
+    content: args.discovery.text.slice(0, 100000),
+    status: "ready",
+    chunks: Math.max(1, Math.ceil(args.discovery.text.length / 240)),
+    updatedAt: createdAt,
+    employeeIds: [],
+  };
+  const prompt = [
+    `You are ${goalDetails.name}, the ${goalDetails.title} for ${args.companyName}.`,
+    `Your job is to improve ${args.goal} outcomes using only the workspace context.`,
+    "Separate facts from assumptions, cite the source by name, and finish every response with one owner and one next action.",
+  ].join(" ");
+  const employee: Employee = {
+    id: createId("emp"),
+    name: goalDetails.name,
+    title: goalDetails.title,
+    department: goalDetails.department,
+    avatar: goalDetails.name.slice(0, 2).toUpperCase(),
+    systemPrompt: prompt,
+    model: process.env.OLLAMA_MODEL ? `Ollama · ${process.env.OLLAMA_MODEL}` : "Ollama · not configured",
+    status: "live",
+    memoryScope: "company",
+    score: 0,
+    scoreTrend: [0],
+    lastRunAt: null,
+    schedule: null,
+    promptVersions: [{ id: createId("pv"), version: 1, prompt, author: "Perpendicular onboarding", createdAt, note: "Created from live workspace discovery.", active: true }],
+    goldenTests: [{ id: createId("gt"), input: goalDetails.task, expected: goalDetails.expected, lastScore: 0 }],
+  };
+  document.employeeIds = [employee.id];
+  return { employee, document, task: goalDetails.task, sourceDescription };
 }

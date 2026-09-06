@@ -8,12 +8,15 @@ Perpendicular is a multi-tenant AI work system. The primary user journey is:
 2. The product API validates those credentials through Blueblood ID and forwards only signed HttpOnly session cookies.
 3. Blueblood ID's session contains the user and organization memberships.
 4. The product resolves the active organization and enforces its role before every read or write.
-5. The user creates an AI Employee with a role, prompt, model, knowledge sources, tools, memory scope, and schedule.
-6. A Smart List discovers or imports people and companies, enriches rows, scores fit, removes duplicates, and applies suppression rules.
-7. Qualified rows can enter a Sequence. The sender adapter sends through a connected mailbox, respects timezone and daily limits, pauses on replies or suppression, and records every provider event.
-8. Inbox events are normalized into conversations. Employees can draft or send only when the workspace policy allows it; otherwise a human approval gate is required.
-9. Heartbeat jobs run through Redis-backed workers. Every run is idempotent, retryable, scored, traced, and visible in Activity.
-10. The Executive Assistant, API, and MCP surfaces call the same application commands as the web UI.
+5. On a new workspace, Perpendicular derives a public company URL from the signed-in business email when possible. The operator can replace it or provide a short brief.
+6. A discovery command fetches only that public source, persists the readable content, and creates one goal-specific Employee with a versioned prompt and golden test. No sample leads or fake metrics are inserted.
+7. The operator runs a first brief through the Dell Ollama worker. The result is persisted as a scored, traced Run before the onboarding flow is complete.
+8. Only after that proof does the product offer a daily Heartbeat schedule. Gmail remains disconnected and send-gated until the operator explicitly connects and tests it.
+9. A Smart List discovers or imports people and companies, enriches rows, scores fit, removes duplicates, and applies suppression rules.
+10. Qualified rows can enter a Sequence. The sender adapter sends through a connected mailbox, respects timezone and daily limits, pauses on replies or suppression, and records every provider event.
+11. Inbox events are normalized into conversations. Employees can draft or send only when the workspace policy allows it; otherwise a human approval gate is required.
+12. Heartbeat jobs run through Redis-backed workers. Every run is idempotent, retryable, scored, traced, and visible in Activity.
+13. The Executive Assistant, API, and MCP surfaces call the same application commands as the web UI.
 
 ## Runtime layout
 
@@ -94,6 +97,7 @@ The product is launchable only when all of these are true:
 - No unauthenticated workspace read or write succeeds.
 - A second organization cannot read or mutate the first organization's records.
 - A signed-in user can create an Employee, attach a real source, run a real task, and inspect the persisted run.
+- A new workspace can complete discovery → first brief → optional daily schedule without sample data or a UI-only success state.
 - A connected Gmail mailbox can send a test message to an owned test address, receive a reply, and pause the Sequence.
 - Heartbeats survive an API restart and do not duplicate work.
 - API keys are hashed, scoped, revocable, rate-limited, and shown once.
