@@ -1,0 +1,16 @@
+services:
+  perpendicular-api:
+    image: ${PERPENDICULAR_IMAGE:?PERPENDICULAR_IMAGE must be an immutable image reference}
+    pull_policy: ${PERPENDICULAR_PULL_POLICY:-always}
+    container_name: perpendicular-api
+    restart: unless-stopped
+    env_file:
+      - /opt/blueblood/perpendicular.env
+    environment:
+      HOSTNAME: "0.0.0.0"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    expose:
+      - "3000"
+    networks:
+      - internal

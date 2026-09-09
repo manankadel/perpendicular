@@ -13,7 +13,6 @@ export async function GET() {
     service: "perpendicular-api",
     database: ok ? "connected" : databaseConfigured() ? "unavailable" : "not_configured",
     model: process.env.DISABLE_OLLAMA === "true" ? "disabled" : "ollama",
-    version: process.env.npm_package_version || "unknown",
+    version: process.env.PERPENDICULAR_BUILD_SHA || process.env.npm_package_version || "unknown",
   }, { status: production && !ok ? 503 : 200 });
 }
-
