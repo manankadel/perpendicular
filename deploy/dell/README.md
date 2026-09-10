@@ -50,7 +50,7 @@ ALLOW_LOCAL_LLM_FALLBACK=false
 */5 7-22 * * * curl -fsS -X POST https://perpendicular.bluebloodstudio.com/api/cron/heartbeat -H "Authorization: Bearer <secret>" -H "X-Company-ID: blueblood-demo" >/dev/null
 ```
 
-Install `deploy/dell/backup-postgres.sh` as `/opt/blueblood/backup-postgres.sh` with root ownership. Run it daily from root cron. It creates a verified custom-format dump of only the dedicated `perpendicular` database, keeps fourteen local days, and copies to `PERPENDICULAR_BACKUP_REMOTE` when configured with rclone. A launch gate is not complete until one dump has been restored into a clean, separately named database and the offsite copy has been retrieved successfully.
+Install `deploy/dell/backup-postgres.sh` as `/opt/blueblood/backup-postgres.sh` with root ownership. Run it daily from root cron. It creates a verified custom-format dump of only the dedicated `perpendicular` database using the Dell's `blueblood` Postgres role by default, keeps fourteen local days, and copies to `PERPENDICULAR_BACKUP_REMOTE` when configured with rclone. A launch gate is not complete until one dump has been restored into a clean, separately named database and the offsite copy has been retrieved successfully.
 
 ## Release and rollback
 
