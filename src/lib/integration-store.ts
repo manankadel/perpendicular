@@ -60,7 +60,7 @@ export async function listIntegrationSummaries(workspaceId: string): Promise<Int
      from perpendicular_integrations where workspace_id = $1 order by provider`,
     [workspaceId],
   );
-  return Promise.all(result.rows.map(async (row) => ({
+  const summaries = await Promise.all(result.rows.map(async (row) => ({
     provider: row.provider,
     status: row.status,
     accountEmail: row.account_email,
@@ -68,6 +68,10 @@ export async function listIntegrationSummaries(workspaceId: string): Promise<Int
     lastSyncAt: row.last_sync_at?.toISOString() || null,
     health: await listIntegrationHealth(workspaceId, row.provider),
   })));
+  if (!summaries.some((integration) => integration.provider === "gmail")) {
+    summaries.push({ provider: "gmail", status: "not_configured", accountEmail: null, scopes: [], lastSyncAt: null, health: [] });
+  }
+  return summaries;
 }
 
 export async function createOAuthState(workspaceId: string, userId: string, provider: string, codeVerifier: string) {

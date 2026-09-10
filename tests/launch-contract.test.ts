@@ -76,3 +76,10 @@ test("Gmail sync has a workspace-scoped inbox read surface", () => {
   assert.match(inbox, /Gmail inbox/);
   assert.match(inbox, /apiPath\("\/api\/inbox"\)/);
 });
+
+test("unconfigured Gmail is represented honestly instead of opening a dead OAuth link", () => {
+  const store = readFileSync(join(root, "src/lib/integration-store.ts"), "utf8");
+  const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
+  assert.match(store, /status: "not_configured"/);
+  assert.match(console, /Gmail OAuth is not configured on the Dell/);
+});
