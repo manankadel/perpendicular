@@ -134,6 +134,21 @@ export async function updateWorkspace(
   companyId: string,
   update: (state: WorkspaceState) => WorkspaceState | Promise<WorkspaceState>,
 ) {
+  const database = await getPool();
+  if (database) {
+    const client = await database.connect();
+    try {
+      await client.query("select pg_advisory_lock(hashtextextended($1, 0))", [companyId]);
+      const current = await getWorkspace(companyId);
+      const next = await update(current);
+      await saveWorkspace(companyId, next);
+      return next;
+    } finally {
+      await client.query("select pg_advisory_unlock(hashtextextended($1, 0))", [companyId]).catch(() => undefined);
+      client.release();
+    }
+  }
+
   const operation = mutationQueue.then(async () => {
     const current = await getWorkspace(companyId);
     const next = await update(current);

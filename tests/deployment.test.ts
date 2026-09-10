@@ -37,6 +37,11 @@ test("production startup does not mutate the database schema", () => {
   assert.match(serverStore, /if \(process\.env\.NODE_ENV === "production"\) return database;/);
 });
 
+test("database-backed workspace writes are serialized per workspace", () => {
+  assert.match(serverStore, /pg_advisory_lock\(hashtextextended\(\$1, 0\)\)/);
+  assert.match(serverStore, /pg_advisory_unlock\(hashtextextended\(\$1, 0\)\)/);
+});
+
 test("production health fails closed when required migrations are missing", () => {
   assert.match(healthRoute, /perpendicular_usage_ledger/);
   assert.match(healthRoute, /information_schema\.tables/);
