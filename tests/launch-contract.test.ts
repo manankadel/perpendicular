@@ -111,3 +111,12 @@ test("public research does not follow unvalidated redirects or unbounded bodies"
   assert.match(research, /maxResponseBytes/);
   assert.match(research, /assertPublicHost\(url\)/);
 });
+
+test("persisted workspace actions return state when audit or usage logging fails", () => {
+  const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
+  const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
+  assert.match(route, /persisted: true/);
+  assert.match(route, /state: updated/);
+  assert.match(route, /state: next/);
+  assert.match(console, /if \(nextState\) \{/);
+});

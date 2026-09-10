@@ -463,9 +463,11 @@ export default function PerpendicularConsole() {
         setState(null);
       }
       const nextState = data.state || (data.workspace ? data as WorkspaceState : null);
+      if (nextState) {
+        setState(nextState);
+        if (nextState.employees.length && !nextState.employees.some((employee) => employee.id === selectedEmployeeId)) setSelectedEmployeeId(nextState.employees[0].id);
+      }
       if (!response.ok || !nextState) throw new Error(data.error || "Action failed.");
-      setState(nextState);
-      if (nextState.employees.length && !nextState.employees.some((employee) => employee.id === selectedEmployeeId)) setSelectedEmployeeId(nextState.employees[0].id);
       setNotice(success || "Saved.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Action failed.");
