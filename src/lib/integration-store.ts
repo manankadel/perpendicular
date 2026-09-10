@@ -11,6 +11,14 @@ export type IntegrationSummary = {
   accountEmail: string | null;
   scopes: string[];
   lastSyncAt: string | null;
+  health: IntegrationHealthEvent[];
+};
+
+export type IntegrationHealthEvent = {
+  status: IntegrationStatus;
+  eventType: string;
+  detail: string;
+  createdAt: string;
 };
 
 type OAuthState = {
@@ -41,13 +49,14 @@ export async function listIntegrationSummaries(workspaceId: string): Promise<Int
      from perpendicular_integrations where workspace_id = $1 order by provider`,
     [workspaceId],
   );
-  return result.rows.map((row) => ({
+  return Promise.all(result.rows.map(async (row) => ({
     provider: row.provider,
     status: row.status,
     accountEmail: row.account_email,
     scopes: row.scopes || [],
     lastSyncAt: row.last_sync_at?.toISOString() || null,
-  }));
+    health: await listIntegrationHealth(workspaceId, row.provider),
+  })));
 }
 
 export async function createOAuthState(workspaceId: string, userId: string, provider: string, codeVerifier: string) {
@@ -104,6 +113,7 @@ export async function saveGmailConnection(args: {
        scopes = excluded.scopes, updated_at = now()`,
     [randomToken(18), args.workspaceId, args.accountEmail, args.providerAccountId, encrypted, args.scopes],
   );
+  await recordIntegrationHealth(args.workspaceId, "gmail", "connected", "oauth_connected", "Gmail OAuth connection persisted.");
 }
 
 export async function getGmailConnection(workspaceId: string): Promise<GmailConnection | null> {
@@ -116,7 +126,7 @@ export async function getGmailConnection(workspaceId: string): Promise<GmailConn
     scopes: string[];
   }>(
     `select id, workspace_id, account_email, provider_account_id, encrypted_refresh_token, scopes
-     from perpendicular_integrations where workspace_id = $1 and provider = 'gmail' and status = 'connected'`,
+     from perpendicular_integrations where workspace_id = $1 and provider = 'gmail' and status in ('connected', 'degraded')`,
     [workspaceId],
   );
   const row = result.rows[0];
@@ -137,14 +147,16 @@ export async function markIntegrationStatus(workspaceId: string, provider: strin
      where workspace_id = $2 and provider = $3`,
     [status, workspaceId, provider],
   );
+  await recordIntegrationHealth(workspaceId, provider, status, "status_changed", `Integration status changed to ${status}.`);
 }
 
 export async function markIntegrationSynced(workspaceId: string, provider: string) {
   await query(
-    `update perpendicular_integrations set last_sync_at = now(), updated_at = now()
+    `update perpendicular_integrations set status = 'connected', last_sync_at = now(), updated_at = now()
      where workspace_id = $1 and provider = $2`,
     [workspaceId, provider],
   );
+  await recordIntegrationHealth(workspaceId, provider, "connected", "sync_succeeded", "Mailbox synchronization completed.");
 }
 
 export async function disconnectIntegration(workspaceId: string, provider: string) {
@@ -153,6 +165,97 @@ export async function disconnectIntegration(workspaceId: string, provider: strin
      set status = 'disconnected', encrypted_refresh_token = null, updated_at = now()
      where workspace_id = $1 and provider = $2`,
     [workspaceId, provider],
+  );
+  await recordIntegrationHealth(workspaceId, provider, "disconnected", "disconnected", "Integration disconnected by the workspace operator.");
+}
+
+export async function updateIntegrationMetadata(workspaceId: string, provider: string, metadata: Record<string, unknown>) {
+  await query(
+    `update perpendicular_integrations
+     set metadata = coalesce(metadata, '{}'::jsonb) || $1::jsonb, updated_at = now()
+     where workspace_id = $2 and provider = $3`,
+    [JSON.stringify(metadata), workspaceId, provider],
+  );
+}
+
+export async function getIntegrationMetadata(workspaceId: string, provider: string) {
+  const result = await query<{ metadata: Record<string, unknown> | null }>(
+    `select metadata from perpendicular_integrations where workspace_id = $1 and provider = $2`,
+    [workspaceId, provider],
+  );
+  return result.rows[0]?.metadata || {};
+}
+
+export async function listIntegrationHealth(workspaceId: string, provider: string, limit = 12): Promise<IntegrationHealthEvent[]> {
+  const result = await query<{
+    status: IntegrationStatus;
+    event_type: string;
+    detail: string;
+    created_at: Date;
+  }>(
+    `select status, event_type, detail, created_at
+     from perpendicular_integration_health
+     where workspace_id = $1 and provider = $2
+     order by created_at desc limit $3`,
+    [workspaceId, provider, Math.min(limit, 50)],
+  );
+  return result.rows.map((row) => ({ status: row.status, eventType: row.event_type, detail: row.detail, createdAt: row.created_at.toISOString() }));
+}
+
+export async function recordIntegrationHealth(workspaceId: string, provider: string, status: IntegrationStatus, eventType: string, detail: string) {
+  await query(
+    `insert into perpendicular_integration_health (id, workspace_id, provider, status, event_type, detail)
+     values ($1, $2, $3, $4, $5, $6)`,
+    [randomToken(18), workspaceId, provider, status, eventType, detail.slice(0, 500)],
+  );
+}
+
+export async function findWorkspaceByGmailAccount(accountEmail: string) {
+  const result = await query<{ workspace_id: string }>(
+    `select workspace_id from perpendicular_integrations
+     where provider = 'gmail' and lower(account_email) = lower($1) and status in ('connected', 'degraded')
+     order by updated_at desc limit 1`,
+    [accountEmail],
+  );
+  return result.rows[0]?.workspace_id || null;
+}
+
+export async function claimWebhookEvent(args: { workspaceId: string; provider: string; providerEventId: string; eventType: string; payload: Record<string, unknown> }) {
+  return transaction(async (client) => {
+    const inserted = await client.query<{ id: string }>(
+      `insert into perpendicular_webhook_events
+        (id, workspace_id, provider, provider_event_id, event_type, payload)
+       values ($1, $2, $3, $4, $5, $6::jsonb)
+       on conflict (provider, provider_event_id) do nothing
+       returning id`,
+      [randomToken(18), args.workspaceId, args.provider, args.providerEventId, args.eventType, JSON.stringify(args.payload)],
+    );
+    if (inserted.rows[0]?.id) return inserted.rows[0].id;
+    const existing = await client.query<{ id: string; status: "received" | "processed" | "failed"; created_at: Date }>(
+      `select id, status, created_at from perpendicular_webhook_events
+       where provider = $1 and provider_event_id = $2 for update`,
+      [args.provider, args.providerEventId],
+    );
+    const row = existing.rows[0];
+    if (!row || row.status === "processed") return null;
+    if (row.status === "received" && Date.now() - row.created_at.getTime() < 10 * 60_000) return null;
+    const reclaimed = await client.query<{ id: string }>(
+      `update perpendicular_webhook_events
+       set status = 'received', error = null, processed_at = null, payload = $2::jsonb
+       where id = $1 and (status = 'failed' or (status = 'received' and created_at < now() - interval '10 minutes'))
+       returning id`,
+      [row.id, JSON.stringify(args.payload)],
+    );
+    return reclaimed.rows[0]?.id || null;
+  });
+}
+
+export async function completeWebhookEvent(id: string, status: "processed" | "failed", error?: string) {
+  await query(
+    `update perpendicular_webhook_events
+     set status = $2, error = $3, processed_at = now()
+     where id = $1`,
+    [id, status, error ? error.slice(0, 2000) : null],
   );
 }
 
@@ -179,4 +282,3 @@ export async function recordAuditEvent(args: {
     ],
   );
 }
-

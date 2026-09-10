@@ -1,5 +1,5 @@
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
-import { authenticateApiKey } from "@/lib/api-keys";
+import { ApiKeyRateLimitError, authenticateApiKey } from "@/lib/api-keys";
 
 export type IdentityMembership = {
   productSlug: string;
@@ -28,7 +28,7 @@ type IdentityClaims = JWTPayload & {
 };
 
 export class IdentityError extends Error {
-  constructor(message: string, readonly status: 401 | 403 = 401) {
+  constructor(message: string, readonly status: 401 | 403 | 429 = 401, readonly retryAfterSeconds?: number) {
     super(message);
     this.name = "IdentityError";
   }
@@ -129,6 +129,7 @@ export async function authenticateRequest(request: Request): Promise<IdentityCon
       };
     } catch (error) {
       if (error instanceof IdentityError) throw error;
+      if (error instanceof ApiKeyRateLimitError) throw new IdentityError(error.message, 429, error.decision.retryAfterSeconds);
       throw new IdentityError("Your API key is invalid or revoked.");
     }
   }

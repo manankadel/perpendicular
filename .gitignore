@@ -10,3 +10,8 @@ data/workspace-state.tmp
 coverage/
 *.tsbuildinfo
 .vercel
+
+# 1M sharded PDFs/HTML — 313MB, keep out of git
+docs/1M/shards/
+perpendicular-1M-shards-*/
+*.1M.pdf

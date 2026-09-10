@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { consumeOAuthState, recordAuditEvent, saveGmailConnection } from "@/lib/integration-store";
-import { exchangeGoogleCode, googleProfile } from "@/lib/gmail";
+import { consumeOAuthState, recordAuditEvent, recordIntegrationHealth, saveGmailConnection } from "@/lib/integration-store";
+import { exchangeGoogleCode, googleProfile, watchGmail } from "@/lib/gmail";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -23,6 +23,10 @@ export async function GET(request: Request) {
       refreshToken: token.refresh_token as string,
       scopes: (token.scope || "").split(" ").filter(Boolean),
     });
+    if (process.env.GMAIL_PUBSUB_TOPIC) {
+      try { await watchGmail(oauthState.workspaceId); }
+      catch (error) { await recordIntegrationHealth(oauthState.workspaceId, "gmail", "degraded", "watch_registration_failed", error instanceof Error ? error.message : "Gmail watch registration failed."); }
+    }
     await recordAuditEvent({
       workspaceId: oauthState.workspaceId,
       actorId: oauthState.userId,
@@ -36,4 +40,3 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${destination}/?gmail=error`);
   }
 }
-

@@ -14,7 +14,7 @@ This is the deployment note for the Blueblood in-house server. It does not modif
 
 1. Install an open model on the Dell: `ollama pull qwen2.5:3b`.
 2. Do not build application images on the Dell. GitHub Actions publishes a Linux amd64 image to `ghcr.io/manankadel/perpendicular-api` for every `main` release. Dell only pulls an exact image digest and never runs `git pull`, `npm ci`, or `docker build` for Perpendicular.
-3. Create the dedicated `perpendicular` database, apply `db/001_workspace_state.sql`, and then apply `db/002_platform.sql`. Put runtime values in a root-owned env file, not in this repository:
+3. Create the dedicated `perpendicular` database, apply `db/001_workspace_state.sql`, `db/002_platform.sql`, and then `db/003_gmail_events_health.sql`. Put runtime values in a root-owned env file, not in this repository:
 
 ```env
 DATABASE_URL=postgresql://blueblood:<password>@postgres:5432/perpendicular
@@ -33,6 +33,9 @@ GOOGLE_GMAIL_CLIENT_ID=<google-web-client-id>
 GOOGLE_GMAIL_CLIENT_SECRET=<google-web-client-secret>
 GOOGLE_GMAIL_REDIRECT_URI=https://perpendicular-api.bluebloodstudio.com/api/integrations/google/callback
 INTEGRATION_ENCRYPTION_KEY=<32-byte-key>
+GMAIL_PUBSUB_TOPIC=projects/<project>/topics/<topic>
+GMAIL_WEBHOOK_SECRET=<long-random-secret>
+API_KEY_RATE_LIMIT_PER_MINUTE=120
 ALLOW_LOCAL_LLM_FALLBACK=false
 ```
 
@@ -46,6 +49,8 @@ ALLOW_LOCAL_LLM_FALLBACK=false
 ```cron
 */5 7-22 * * * curl -fsS -X POST https://perpendicular.bluebloodstudio.com/api/cron/heartbeat -H "Authorization: Bearer <secret>" -H "X-Company-ID: blueblood-demo" >/dev/null
 ```
+
+Install `deploy/dell/backup-postgres.sh` as `/opt/blueblood/backup-postgres.sh` with root ownership. Run it daily from root cron. It creates a verified custom-format dump of only the dedicated `perpendicular` database, keeps fourteen local days, and copies to `PERPENDICULAR_BACKUP_REMOTE` when configured with rclone. A launch gate is not complete until one dump has been restored into a clean, separately named database and the offsite copy has been retrieved successfully.
 
 ## Release and rollback
 
@@ -70,3 +75,5 @@ curl -fsS https://perpendicular.bluebloodstudio.com/api/workspace | jq '.workspa
 ```
 
 The app falls back to atomic JSON storage only outside production. On the Dell, a Postgres connection failure is an incident and the API returns an unavailable status; it does not silently accept writes into ephemeral container storage.
+
+Gmail OAuth automatically registers a watch when `GMAIL_PUBSUB_TOPIC` is configured. The heartbeat renews watches inside the 12-hour renewal window, and the Settings page exposes a manual renewal action. Configure the Pub/Sub push subscription with the same `GMAIL_WEBHOOK_SECRET`; events are persisted and deduplicated before the mailbox is synchronized.

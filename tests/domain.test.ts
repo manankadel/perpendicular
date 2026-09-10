@@ -10,6 +10,20 @@ test("seed workspace has the core employee -> knowledge -> run loop", () => {
   assert.ok(state.runs.every((run) => run.trace.length >= 3));
 });
 
+test("development seed follows the configured credit budgets", () => {
+  const previousAi = process.env.INITIAL_AI_CREDITS;
+  const previousData = process.env.INITIAL_DATA_CREDITS;
+  process.env.INITIAL_AI_CREDITS = "321";
+  process.env.INITIAL_DATA_CREDITS = "654";
+  const state = createInitialState("credit-test");
+  assert.deepEqual(state.workspace.aiCredits, { remaining: 321, limit: 321 });
+  assert.deepEqual(state.workspace.dataCredits, { remaining: 654, purchased: 654 });
+  if (previousAi === undefined) delete process.env.INITIAL_AI_CREDITS;
+  else process.env.INITIAL_AI_CREDITS = previousAi;
+  if (previousData === undefined) delete process.env.INITIAL_DATA_CREDITS;
+  else process.env.INITIAL_DATA_CREDITS = previousData;
+});
+
 test("retrieval returns scoped documents that share query terms", () => {
   const state = createInitialState();
   const matches = findRelevantDocuments(state.documents, "deliverability follow-through suppression");

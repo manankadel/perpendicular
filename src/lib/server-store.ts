@@ -38,7 +38,15 @@ export async function listWorkspaceIds() {
     return result.rows.map((row) => row.company_id);
   }
   if (!allowFileFallback()) throw new Error("Production database is not configured or unavailable.");
-  return [defaultCompanyId];
+  try {
+    const raw = await readFile(dataFile, "utf8");
+    const all = JSON.parse(raw) as Record<string, WorkspaceState>;
+    const ids = Object.keys(all).filter(Boolean).sort();
+    return ids.length > 0 ? ids : [defaultCompanyId];
+  } catch {
+    const ids = [...transientStates.keys()].filter(Boolean).sort();
+    return ids.length > 0 ? ids : [defaultCompanyId];
+  }
 }
 
 function allowFileFallback() {

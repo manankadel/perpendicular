@@ -325,7 +325,12 @@ button:disabled { cursor: wait; opacity: .52; }
 .prompt-note { display: flex; align-items: center; gap: 7px; margin-top: 11px; color: var(--mint); font-size: 10px; }
 .version-list { display: grid; gap: 0; }
 .version-row { display: grid; grid-template-columns: 31px minmax(0, 1fr) auto; gap: 9px; align-items: start; padding: 11px 0; border-bottom: 1px solid rgba(41,48,55,.72); }
+.version-row { cursor: pointer; border-radius: 5px; padding-left: 6px; padding-right: 6px; }
+.version-row.selected { background: rgba(128,92,62,.12); }
 .version-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.prompt-compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.prompt-compare pre { min-height: 120px; margin: 6px 0 0; padding: 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--text-muted); background: #0d1012; font: inherit; font-size: 11px; line-height: 1.6; white-space: pre-wrap; }
+.prompt-compare-label { color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
 .version-number { color: var(--signal); font-size: 10px; font-weight: 800; }
 .version-note { color: var(--text); font-size: 10px; line-height: 1.45; }
 .version-author { margin-top: 4px; color: var(--text-dim); font-size: 9px; }

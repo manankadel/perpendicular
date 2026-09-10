@@ -29,7 +29,7 @@ Local development can use the JSON state fallback. Production cannot: `DATABASE_
 
 ## Database
 
-Apply `db/001_workspace_state.sql` and then `db/002_platform.sql` to the dedicated `perpendicular` Postgres database. Do not use the shared Blueblood ID database for product state. The second migration contains integration, OAuth-state, API-key, audit, job, and inbox tables.
+Apply `db/001_workspace_state.sql`, `db/002_platform.sql`, and `db/003_gmail_events_health.sql` to the dedicated `perpendicular` Postgres database. Do not use the shared Blueblood ID database for product state. The migrations contain workspace, integration, OAuth-state, API-key, audit, durable job, inbox, webhook-event, and integration-health tables.
 
 ## Verify
 
@@ -43,11 +43,13 @@ npm audit --omit=dev --audit-level=high
 
 The API contract is available at `/api/docs`. The launch runbook and trust boundaries are in [`docs/production-architecture.md`](docs/production-architecture.md) and [`deploy/dell/README.md`](deploy/dell/README.md).
 
+The Dell release includes a verified Postgres backup script at `deploy/dell/backup-postgres.sh`. It is intentionally separate from application deploys; deploys never run migrations or touch the backup schedule.
+
 New workspaces do not receive demo employees, leads, content, or metrics. Onboarding creates only what the operator requested and can prove: one discovered source, one scoped employee, and one real run. If the public URL cannot be fetched, the operator can provide a source brief; if Ollama is unavailable, the first run stops with a configuration error instead of rendering a placeholder.
 
 ## Required provider setup
 
-Perpendicular owns the sign-in screen. Blueblood ID remains the server-side identity authority: it validates the password or MFA challenge and issues the signed, cross-subdomain session cookie; no identity token is returned to browser JavaScript. Gmail requires a Google Cloud OAuth web client with the exact redirect URI in `GOOGLE_GMAIL_REDIRECT_URI`, plus the Gmail scopes requested by the app. The client secret and `INTEGRATION_ENCRYPTION_KEY` stay server-side. A Gmail send has not been performed by this repository; use the Settings test-send action only against an address you control.
+Perpendicular owns the sign-in screen. Blueblood ID remains the server-side identity authority: it validates the password or MFA challenge and issues the signed, cross-subdomain session cookie; no identity token is returned to browser JavaScript. Gmail requires a Google Cloud OAuth web client with the exact redirect URI in `GOOGLE_GMAIL_REDIRECT_URI`, plus the Gmail scopes requested by the app. For push sync, configure a Gmail Pub/Sub topic in `GMAIL_PUBSUB_TOPIC`, set `GMAIL_WEBHOOK_SECRET`, and point the push subscription at `/api/webhooks/gmail?token=<secret>`. The client secret, webhook secret, and `INTEGRATION_ENCRYPTION_KEY` stay server-side. A Gmail send has not been performed by this repository; use the Settings test-send action only against an address you control.
 
 No enrichment vendor, hosted model, Stripe checkout, telephony provider, LinkedIn automation, or WhatsApp provider is silently substituted. If one is not configured, its action is unavailable or returns a clear configuration error.
 

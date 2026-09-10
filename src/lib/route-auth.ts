@@ -11,7 +11,7 @@ export async function identityOrResponse(request: Request) {
         response: corsJson({
           error: error.message,
           ...(error.status === 401 ? { loginUrl: getLoginUrl(request) } : {}),
-        }, { status: error.status }, request),
+        }, { status: error.status, headers: error.retryAfterSeconds ? { "retry-after": String(error.retryAfterSeconds) } : undefined }, request),
       };
     }
     throw error;

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getGmailConnection, markIntegrationStatus } from "@/lib/integration-store";
+import { getGmailConnection, getIntegrationMetadata, markIntegrationStatus, recordIntegrationHealth, updateIntegrationMetadata } from "@/lib/integration-store";
 
 const gmailScope = [
   "openid",
@@ -136,6 +136,52 @@ export async function listRecentGmailMessages(workspaceId: string, maxResults = 
   return await response.json() as { messages?: Array<{ id: string; threadId: string }>; resultSizeEstimate?: number };
 }
 
+export async function listGmailHistory(workspaceId: string, startHistoryId: string) {
+  if (!/^\d+$/.test(startHistoryId)) throw new Error("Gmail history cursor is invalid.");
+  const { accessToken } = await accessTokenFor(workspaceId);
+  const messageIds = new Set<string>();
+  let pageToken: string | undefined;
+  let latestHistoryId: string | null = null;
+  do {
+    const params = new URLSearchParams({ startHistoryId, maxResults: "100", historyTypes: "messageAdded" });
+    if (pageToken) params.set("pageToken", pageToken);
+    const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/history?${params}`, { headers: { authorization: `Bearer ${accessToken}` } });
+    if (response.status === 404) throw new Error("Gmail history cursor expired. A full mailbox sync is required.");
+    if (!response.ok) throw new Error(`Gmail history listing failed (${response.status}).`);
+    const payload = await response.json() as { history?: Array<{ messagesAdded?: Array<{ message?: { id?: string } }> }>; historyId?: string; nextPageToken?: string };
+    latestHistoryId = payload.historyId || latestHistoryId;
+    for (const history of payload.history || []) for (const added of history.messagesAdded || []) if (added.message?.id) messageIds.add(added.message.id);
+    pageToken = payload.nextPageToken;
+  } while (pageToken);
+  return { messageIds: [...messageIds], historyId: latestHistoryId };
+}
+
+export async function watchGmail(workspaceId: string) {
+  const topicName = process.env.GMAIL_PUBSUB_TOPIC;
+  if (!topicName) throw new Error("GMAIL_PUBSUB_TOPIC is not configured.");
+  const { accessToken } = await accessTokenFor(workspaceId);
+  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/watch", {
+    method: "POST",
+    headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+    body: JSON.stringify({ topicName, labelIds: ["INBOX"] }),
+  });
+  if (!response.ok) throw new Error(`Gmail watch registration failed (${response.status}).`);
+  const payload = await response.json() as { historyId?: string; expiration?: string };
+  if (!payload.historyId || !payload.expiration) throw new Error("Gmail returned an incomplete watch registration.");
+  await updateIntegrationMetadata(workspaceId, "gmail", { historyId: payload.historyId, watchExpiration: new Date(Number(payload.expiration)).toISOString(), watchTopic: topicName });
+  await recordIntegrationHealth(workspaceId, "gmail", "connected", "watch_renewed", `Gmail watch active until ${new Date(Number(payload.expiration)).toISOString()}.`);
+  return { historyId: payload.historyId, expiration: payload.expiration };
+}
+
+export async function renewGmailWatchIfNeeded(workspaceId: string) {
+  if (!process.env.GMAIL_PUBSUB_TOPIC) return null;
+  if (!await getGmailConnection(workspaceId)) return null;
+  const metadata = await getIntegrationMetadata(workspaceId, "gmail");
+  const expiration = typeof metadata.watchExpiration === "string" ? new Date(metadata.watchExpiration).getTime() : 0;
+  if (expiration > Date.now() + 12 * 60 * 60 * 1000) return null;
+  return watchGmail(workspaceId);
+}
+
 function header(headers: Array<{ name?: string; value?: string }> | undefined, name: string) {
   return headers?.find((item) => item.name?.toLowerCase() === name.toLowerCase())?.value || "";
 }
@@ -159,6 +205,7 @@ export async function getGmailMessage(workspaceId: string, messageId: string) {
   const message = await response.json() as {
     id: string;
     threadId: string;
+    historyId?: string;
     internalDate?: string;
     payload?: { headers?: Array<{ name?: string; value?: string }>; body?: { data?: string }; parts?: unknown[] };
   };
@@ -168,6 +215,7 @@ export async function getGmailMessage(workspaceId: string, messageId: string) {
   return {
     id: message.id,
     threadId: message.threadId,
+    historyId: message.historyId,
     from,
     to,
     subject: header(headers, "Subject"),

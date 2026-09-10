@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 export type Department = "Growth" | "Content" | "Support" | "Operations";
 
 export type Employee = {
@@ -31,6 +33,7 @@ export type PromptVersion = {
   createdAt: string;
   note: string;
   active: boolean;
+  goldenScore?: number | null;
 };
 
 export type GoldenTest = {
@@ -192,12 +195,18 @@ export type WorkspaceState = {
     accountEmail: string | null;
     scopes: string[];
     lastSyncAt: string | null;
+    health?: Array<{
+      status: "not_configured" | "connected" | "degraded" | "disconnected";
+      eventType: string;
+      detail: string;
+      createdAt: string;
+    }>;
   }>;
 };
 
 const now = () => new Date().toISOString();
 
-const id = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
+const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 
 export function createOnboardingState(status: OnboardingState["status"] = "not_started"): OnboardingState {
   return {
@@ -255,6 +264,7 @@ function createEmptyState(companyId: string): WorkspaceState {
 
 export function createInitialState(companyId = "blueblood-demo"): WorkspaceState {
   if (process.env.NODE_ENV === "production") return createEmptyState(companyId);
+  const seed = createEmptyState(companyId);
   const timestamp = now();
   const atlas: Employee = {
     id: "emp-atlas",
@@ -369,14 +379,11 @@ export function createInitialState(companyId = "blueblood-demo"): WorkspaceState
 
   const employees = [atlas, nova, rhea];
   return {
+    ...seed,
     workspace: {
+      ...seed.workspace,
       id: companyId,
       name: "Blueblood Studio",
-      plan: "Open Source",
-      aiCredits: { remaining: 187, limit: 250 },
-      dataCredits: { remaining: 748, purchased: 1000 },
-      region: "LAN / Dell",
-      model: "Ollama · qwen2.5:3b",
       onboarding: {
         ...createOnboardingState("completed"),
         goal: "revenue",

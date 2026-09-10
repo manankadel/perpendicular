@@ -14,10 +14,9 @@ import {
 import { generateEmployeeReply } from "@/lib/llm";
 import { getWorkspace, updateWorkspace } from "@/lib/server-store";
 import { authenticateRequest, getLoginUrl, IdentityError, type IdentityContext } from "@/lib/identity";
-import { hasPermission } from "@/lib/route-auth";
+import { hasPermission, rejectCrossOrigin } from "@/lib/route-auth";
 import { listIntegrationSummaries, recordAuditEvent } from "@/lib/integration-store";
 import { researchPersonCompany, researchWebsite } from "@/lib/public-research";
-import { sameOrigin } from "@/lib/security";
 import { corsHeadersFor } from "@/lib/cors";
 
 export const dynamic = "force-dynamic";
@@ -46,7 +45,7 @@ async function getIdentity(request: Request): Promise<{ context: IdentityContext
         response: json({
           error: error.message,
           ...(error.status === 401 ? { loginUrl: getLoginUrl(request) } : {}),
-        }, { status: error.status }),
+        }, { status: error.status, headers: error.retryAfterSeconds ? { "retry-after": String(error.retryAfterSeconds) } : undefined }),
       };
     }
     throw error;
@@ -71,7 +70,7 @@ function makeRun(state: WorkspaceState, employee: Employee, task: string, trigge
       : "The run used the employee prompt, retrieved context, and ended with an actionable owner.",
     status: "completed" as const,
     createdAt: timestamp(),
-    durationMs: 1400 + Math.floor(Math.random() * 900),
+    durationMs: 1700,
     trace: [
       { label: "Memory", detail: "Loaded company context and previous run", durationMs: 12, cost: 0, status: "complete" as const },
       { label: "Knowledge", detail: "Retrieved scoped workspace context", durationMs: 38, cost: 0, status: "complete" as const },
@@ -134,7 +133,8 @@ export async function GET(request: Request) {
 }
 
 async function postWorkspace(request: Request): Promise<Response> {
-  if (!sameOrigin(request) && !request.headers.get("x-api-key") && !(request.headers.get("authorization") || "").startsWith("Bearer pp_")) return json({ error: "Cross-origin mutation rejected." }, { status: 403 });
+  const originError = rejectCrossOrigin(request);
+  if (originError) return originError;
   const identity = await getIdentity(request);
   if ("response" in identity) return identity.response;
   const companyId = identity.context.workspaceId;
@@ -357,22 +357,42 @@ async function postWorkspace(request: Request): Promise<Response> {
         case "evaluate-employee": {
           const employee = findEmployee(state, String(body.employeeId || ""));
           if (!employee) throw new Error("Employee not found.");
+          const requestedVersionId = String(body.promptVersionId || "").trim();
+          const evaluatedVersion = requestedVersionId
+            ? employee.promptVersions.find((version) => version.id === requestedVersionId)
+            : employee.promptVersions.find((version) => version.active);
+          if (requestedVersionId && !evaluatedVersion) throw new Error("Prompt version not found.");
           const task = employee.goldenTests[0]?.input || "Give your best recommendation.";
-          const result = await generateEmployeeReply(employee, task, state.documents);
+          const result = await generateEmployeeReply(evaluatedVersion ? { ...employee, systemPrompt: evaluatedVersion.prompt } : employee, task, state.documents);
           const run = makeRun(state, employee, task, "evaluation", result.content);
           run.trace[2].detail = `${employee.model} · ${result.provider}`;
           employee.goldenTests = employee.goldenTests.map((test) => ({ ...test, lastScore: Math.max(78, Math.min(98, run.score + (test.id.length % 5) - 2)) }));
-          const currentPrompt = employee.promptVersions.find((version) => version.active)?.prompt || employee.systemPrompt;
-          employee.promptVersions.unshift({
-            id: createId("pv"),
-            version: employee.promptVersions.length + 1,
-            prompt: `${currentPrompt}\n\nAlways cite the relevant workspace source before proposing the next action.`,
-            author: "Evaluator",
-            createdAt: timestamp(),
-            note: "Suggested after golden evaluation. Review before applying.",
-            active: false,
-          });
-          addActivity(state, { type: "employee", title: `${employee.name} completed a golden evaluation`, detail: `Score ${run.score} · prompt suggestion ready for review`, });
+          if (evaluatedVersion) evaluatedVersion.goldenScore = run.score;
+          if (!requestedVersionId) {
+            const currentPrompt = evaluatedVersion?.prompt || employee.systemPrompt;
+            employee.promptVersions.unshift({
+              id: createId("pv"),
+              version: employee.promptVersions.length + 1,
+              prompt: `${currentPrompt}\n\nAlways cite the relevant workspace source before proposing the next action.`,
+              author: "Evaluator",
+              createdAt: timestamp(),
+              note: "Suggested after golden evaluation. Review before applying.",
+              active: false,
+              goldenScore: null,
+            });
+          }
+          addActivity(state, { type: "employee", title: `${employee.name} evaluated prompt v${evaluatedVersion?.version || 1}`, detail: `Score ${run.score}${requestedVersionId ? " · candidate evaluated" : " · prompt suggestion ready for review"}`, });
+          return state;
+        }
+        case "activate-prompt-version": {
+          const employee = findEmployee(state, String(body.employeeId || ""));
+          const versionId = String(body.promptVersionId || "").trim();
+          if (!employee || !versionId) throw new Error("Employee and prompt version are required.");
+          const version = employee.promptVersions.find((candidate) => candidate.id === versionId);
+          if (!version) throw new Error("Prompt version not found.");
+          employee.promptVersions = employee.promptVersions.map((candidate) => ({ ...candidate, active: candidate.id === versionId }));
+          employee.systemPrompt = version.prompt;
+          addActivity(state, { type: "employee", title: `${employee.name} switched to prompt v${version.version}`, detail: "The previous live prompt remains available for rollback.", });
           return state;
         }
         case "schedule-employee": {
@@ -426,7 +446,7 @@ async function postWorkspace(request: Request): Promise<Response> {
           const message = String(body.message || "").trim();
           if (!subject || !message) throw new Error("Ticket subject and message are required.");
           const ticket = {
-            id: `ticket-${Math.floor(1000 + Math.random() * 8999)}`,
+            id: createId("ticket"),
             subject,
             requester: "Blueblood Studio",
             message,

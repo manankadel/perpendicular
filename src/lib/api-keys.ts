@@ -1,5 +1,6 @@
 import { query } from "@/lib/database";
 import { randomToken, sha256 } from "@/lib/security";
+import { consumeApiKeyRateLimit, type RateLimitDecision } from "@/lib/rate-limit";
 
 export type ApiKeyRecord = {
   id: string;
@@ -11,6 +12,13 @@ export type ApiKeyRecord = {
   createdAt: string;
   lastUsedAt: string | null;
 };
+
+export class ApiKeyRateLimitError extends Error {
+  constructor(readonly decision: RateLimitDecision) {
+    super("API key rate limit exceeded.");
+    this.name = "ApiKeyRateLimitError";
+  }
+}
 
 export async function createApiKey(args: { workspaceId: string; createdBy: string; name: string; scopes: string[] }) {
   const secret = `pp_live_${randomToken(32)}`;
@@ -66,12 +74,14 @@ export async function authenticateApiKey(secret: string) {
     workspace_id: string;
     scopes: string[];
   }>(
-    `update perpendicular_api_keys set last_used_at = now()
-     where key_hash = $1 and revoked_at is null
-     returning id, workspace_id, scopes`,
+    `select id, workspace_id, scopes
+     from perpendicular_api_keys where key_hash = $1 and revoked_at is null`,
     [sha256(secret)],
   );
   const row = result.rows[0];
   if (!row) return null;
-  return { id: row.id, workspaceId: row.workspace_id, scopes: row.scopes || [] };
+  const decision = consumeApiKeyRateLimit(sha256(secret), row.workspace_id);
+  if (!decision.allowed) throw new ApiKeyRateLimitError(decision);
+  await query("update perpendicular_api_keys set last_used_at = now() where id = $1", [row.id]);
+  return { id: row.id, workspaceId: row.workspace_id, scopes: row.scopes || [], rateLimit: decision };
 }

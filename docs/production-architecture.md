@@ -15,7 +15,7 @@ Perpendicular is a multi-tenant AI work system. The primary user journey is:
 9. A Smart List discovers or imports people and companies, enriches rows, scores fit, removes duplicates, and applies suppression rules.
 10. Qualified rows can enter a Sequence. The sender adapter sends through a connected mailbox, respects timezone and daily limits, pauses on replies or suppression, and records every provider event.
 11. Inbox events are normalized into conversations. Employees can draft or send only when the workspace policy allows it; otherwise a human approval gate is required.
-12. Heartbeat jobs run through Redis-backed workers. Every run is idempotent, retryable, scored, traced, and visible in Activity.
+12. Heartbeat jobs run through a Postgres-leased worker path at launch. Every run is idempotent, retryable, scored, traced, and visible in Activity; Redis is the scale-out seam.
 13. The Executive Assistant, API, and MCP surfaces call the same application commands as the web UI.
 
 ## Runtime layout
@@ -29,7 +29,7 @@ Browser
 
 Dell / Docker Compose
   ├─ Perpendicular API (Next.js Node runtime)
-  ├─ Perpendicular heartbeat runner (authenticated host cron)
+  ├─ Perpendicular heartbeat runner (authenticated host cron + Postgres leases)
   ├─ Postgres 16 (perpendicular database)
   ├─ Redis 7 (queues, locks, rate limits, cache)
   ├─ Ollama (local inference)
@@ -72,10 +72,10 @@ All tenant-owned tables include `workspace_id`, indexes begin with that key wher
 
 ## Async and failure handling
 
-- The launch runner is a host-triggered heartbeat endpoint. It scans persisted due schedules, runs only due employees, and advances the next run time after success.
-- `perpendicular_jobs` carries the idempotency key and tenant context for the next worker process. It is deliberately present in the schema before a queue consumer is enabled.
+- The launch runner is a host-triggered heartbeat endpoint. It scans persisted due schedules, claims `perpendicular_jobs` with a lease and idempotency key, runs only due employees, and advances the next run time after success.
+- The launch worker uses Postgres leases for restart safety. Redis remains the scale-out seam for queue partitioning and distributed rate limits; the current API-key limiter is bounded in-memory per API process.
 - Gmail sync is explicit and deduplicates by provider message ID. Sequence sends remain approval-gated until a durable sender worker is deployed.
-- The worker upgrade will use bounded retries and a dead-letter state; no UI may report a background job as complete before its persisted result exists.
+- Heartbeat jobs use bounded retries and a dead-letter state; no UI may report a background job as complete before its persisted result exists.
 - Provider webhooks are persisted before processing and deduplicated by provider event ID.
 - A worker restart must be safe: a job can run twice without sending a duplicate message or charging twice.
 - Synchronous HTTP routes are limited to validation, command creation, and fast reads. Long work returns a job ID.
