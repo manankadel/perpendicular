@@ -17,6 +17,9 @@ test("the public API contract exposes usage and privacy controls", () => {
   assert.match(docs, /\/api\/usage/);
   assert.match(docs, /\/api\/workspace\/export/);
   assert.match(docs, /\/api\/workspace\/privacy/);
+  assert.match(docs, /\/api\/integrations\/google\/callback/);
+  assert.match(docs, /\/api\/cron\/heartbeat/);
+  assert.match(docs, /\/api\/keys\/\{id\}/);
 });
 
 test("workspace deletion requires owner confirmation in the route contract", () => {
