@@ -64,7 +64,7 @@ await check("truthful pricing endpoint", async () => {
   const response = await request(`${apiOrigin}/api/pricing`);
   const body = await json(response);
   if (response.status !== 200 || body.openSource !== true) throw new Error(`status=${response.status}`);
-  if (body.stripe !== false) throw new Error("Stripe must remain disabled for the open-source launch");
+  if (body.billing?.checkout !== false) throw new Error("Stripe checkout must remain disabled for the open-source launch");
 });
 
 for (const [name, origin] of [["canonical UI", canonicalOrigin], ["Vercel UI", vercelOrigin]]) {
