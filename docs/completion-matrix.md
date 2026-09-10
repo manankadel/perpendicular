@@ -50,7 +50,7 @@ None of these are replaced with sample data or a green UI state.
 
 Read-only checks on 2026-09-10 found:
 
-- The live API is healthy on image `98d0c7d1d6e17c9dd4eaabedad3e26712e516577`; the locally verified source is 23 commits ahead of `origin/main` and has not been promoted.
+- The live API is healthy on image `98d0c7d1d6e17c9dd4eaabedad3e26712e516577`; the locally verified source is ahead of `origin/main` and has not been promoted.
 - Dell has the workspace, platform, and Gmail event/health tables (migrations 001–003). The additive usage ledger migration (004) is not applied yet.
 - Dell local backups exist and restore rehearsal passed, but the rclone configuration and offsite remote are absent.
 - Gmail OAuth client ID and secret are empty on the live container, so provider E2E cannot pass yet. Blueblood ID's deployed portal also has no Google OAuth client variables, so product Google sign-in requires provider configuration before it can be verified.
