@@ -31,11 +31,21 @@ function meta(html: string, name: string) {
 }
 
 function privateAddress(address: string) {
-  if (net.isIPv4(address)) {
-    const [a, b] = address.split(".").map(Number);
-    return a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a === 0;
+  const normalized = address.toLowerCase().replace(/^\[|\]$/g, "");
+  if (net.isIPv4(normalized)) {
+    const [a, b] = normalized.split(".").map(Number);
+    return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && (b === 0 || b === 168)) || (a === 198 && (b === 18 || b === 19 || b === 51)) || (a === 203 && b === 0) || a >= 224;
   }
-  return address === "::1" || address.startsWith("fc") || address.startsWith("fd") || address.startsWith("fe8") || address.startsWith("fe9") || address.startsWith("fea") || address.startsWith("feb");
+  if (normalized.startsWith("::ffff:")) {
+    const suffix = normalized.slice(7);
+    const groups = suffix.split(":");
+    if (groups.length === 2 && groups.every((group) => /^[0-9a-f]{1,4}$/.test(group))) {
+      const value = (Number.parseInt(groups[0], 16) * 0x10000) + Number.parseInt(groups[1], 16);
+      return privateAddress(`${value >>> 24}.${(value >>> 16) & 255}.${(value >>> 8) & 255}.${value & 255}`);
+    }
+    if (net.isIPv4(suffix)) return privateAddress(suffix);
+  }
+  return normalized === "::" || normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe8") || normalized.startsWith("fe9") || normalized.startsWith("fea") || normalized.startsWith("feb");
 }
 
 async function assertPublicHost(url: URL) {
