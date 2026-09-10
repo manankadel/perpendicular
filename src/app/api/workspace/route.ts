@@ -194,7 +194,7 @@ async function postWorkspace(request: Request): Promise<Response> {
         addActivity(state, { type: "system", title: `${companyName} was discovered`, detail: `${artifacts.document.name} indexed · ${artifacts.employee.name} is ready for a first brief`, });
         return state;
       });
-      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.bootstrap", metadata: { goal, source: discovery.url ? "public_url" : "operator_brief" } }); } catch (error) { if (process.env.NODE_ENV === "production") return json({ error: error instanceof Error ? error.message : "Audit storage is unavailable." }, { status: 503 }); }
+      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.bootstrap", metadata: { goal, source: discovery.url ? "public_url" : "operator_brief" } }); } catch (error) { if (process.env.NODE_ENV === "production") return json({ state: next, persisted: true, error: error instanceof Error ? `The workspace was created, but its audit record failed: ${error.message}` : "The workspace was created, but audit storage is unavailable." }, { status: 503 }); }
       return json({ state: next, discovery: { title: next.workspace.onboarding.sourceTitle, description: next.workspace.onboarding.sourceDescription, url: next.workspace.onboarding.companyUrl } });
     }
 

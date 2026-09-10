@@ -31,8 +31,13 @@ export async function POST(request: Request) {
     const scopes = [...new Set(requestedScopes.filter((scope): scope is ApiKeyScope => typeof scope === "string" && (apiKeyScopes as readonly string[]).includes(scope)))] as ApiKeyScope[];
     if (!scopes.length) return corsJson({ error: `Choose at least one supported scope: ${apiKeyScopes.join(", ")}.` }, { status: 400 }, request);
     const key = await createApiKey({ workspaceId: identity.context.workspaceId, createdBy: identity.context.userId, name, scopes });
-    await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "api_key.created", resourceType: "api_key", resourceId: key.id, metadata: { name, scopes } });
-    return corsJson({ ...key, warning: "Copy this key now. It will never be shown again." }, { status: 201, headers: rateLimitHeaders(identity.context) }, request);
+    let auditWarning: string | undefined;
+    try {
+      await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "api_key.created", resourceType: "api_key", resourceId: key.id, metadata: { name, scopes } });
+    } catch (error) {
+      auditWarning = error instanceof Error ? `The key was created, but its audit record failed: ${error.message}` : "The key was created, but audit storage is unavailable.";
+    }
+    return corsJson({ ...key, warning: ["Copy this key now. It will never be shown again.", auditWarning].filter(Boolean).join(" "), auditRecorded: !auditWarning }, { status: 201, headers: rateLimitHeaders(identity.context) }, request);
   } catch (error) {
     return corsJson({ error: error instanceof Error ? error.message : "Could not create API key." }, { status: 503 }, request);
   }

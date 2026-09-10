@@ -12,8 +12,13 @@ export async function POST(request: Request) {
   if ("response" in identity) return identity.response;
   if (!hasPermission(identity.context, "settings:write")) return corsJson({ error: "You do not have permission to disconnect Gmail." }, { status: 403 }, request);
   await disconnectIntegration(identity.context.workspaceId, "gmail");
-  await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "integration.disconnected", resourceType: "integration", resourceId: "gmail" });
-  return corsJson({ ok: true }, undefined, request);
+  let warning: string | undefined;
+  try {
+    await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "integration.disconnected", resourceType: "integration", resourceId: "gmail" });
+  } catch (error) {
+    warning = error instanceof Error ? `Gmail was disconnected, but its audit record failed: ${error.message}` : "Gmail was disconnected, but audit storage is unavailable.";
+  }
+  return corsJson({ ok: true, ...(warning ? { auditRecorded: false, warning } : { auditRecorded: true }) }, undefined, request);
 }
 
 export function OPTIONS(request: Request) { return new Response(null, { status: 204, headers: corsHeadersFor(request) }); }

@@ -15,8 +15,13 @@ export async function POST(request: Request) {
   if (!hasPermission(identity.context, "workspace:read")) return NextResponse.json({ error: "You do not have permission to sync Gmail." }, { status: 403 });
   try {
     const synced = await syncGmailWorkspace(identity.context.workspaceId);
-    await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "gmail.synced", resourceType: "gmail", metadata: { count: synced.count, insertedCount: synced.insertedCount, historyId: synced.historyId } });
-    return corsJson({ ok: true, count: synced.count, state: synced.state }, undefined, request);
+    let warning: string | undefined;
+    try {
+      await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "gmail.synced", resourceType: "gmail", metadata: { count: synced.count, insertedCount: synced.insertedCount, historyId: synced.historyId } });
+    } catch (error) {
+      warning = error instanceof Error ? `Inbox sync completed, but its audit record failed: ${error.message}` : "Inbox sync completed, but audit storage is unavailable.";
+    }
+    return corsJson({ ok: true, count: synced.count, state: synced.state, ...(warning ? { auditRecorded: false, warning } : { auditRecorded: true }) }, undefined, request);
   } catch (error) {
     return corsJson({ error: error instanceof Error ? error.message : "Gmail sync failed." }, { status: 400 }, request);
   }

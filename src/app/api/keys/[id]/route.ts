@@ -14,8 +14,13 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const { id } = await params;
   const revoked = await revokeApiKey(identity.context.workspaceId, id);
   if (!revoked) return corsJson({ error: "API key not found." }, { status: 404 }, request);
-  await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "api_key.revoked", resourceType: "api_key", resourceId: id });
-  return corsJson({ ok: true }, { headers: rateLimitHeaders(identity.context) }, request);
+  let warning: string | undefined;
+  try {
+    await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "api_key.revoked", resourceType: "api_key", resourceId: id });
+  } catch (error) {
+    warning = error instanceof Error ? `The key was revoked, but its audit record failed: ${error.message}` : "The key was revoked, but audit storage is unavailable.";
+  }
+  return corsJson({ ok: true, ...(warning ? { auditRecorded: false, warning } : { auditRecorded: true }) }, { headers: rateLimitHeaders(identity.context) }, request);
 }
 
 export function OPTIONS(request: Request) {

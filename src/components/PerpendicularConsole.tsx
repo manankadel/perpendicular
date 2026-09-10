@@ -358,8 +358,9 @@ function SettingsView({ state, usage }: { state: WorkspaceState; usage: UsageSum
     setGmailBusy(true);
     try {
       const response = await fetch(apiPath("/api/integrations/gmail/test"), { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ to: testRecipient }) });
-      if (!response.ok) throw new Error(await responseError(response, "The test email could not be sent."));
-      setSettingsMessage(`Test email sent to ${testRecipient}.`);
+      const payload = await response.json().catch(() => null) as { warning?: string } | null;
+      if (!response.ok) throw new Error(payload?.warning || await responseError(response, "The test email could not be sent."));
+      setSettingsMessage(payload?.warning ? `Test email sent to ${testRecipient}. ${payload.warning}` : `Test email sent to ${testRecipient}.`);
     } catch (error) {
       setSettingsMessage(error instanceof Error ? error.message : "The test email could not be sent.");
     } finally {

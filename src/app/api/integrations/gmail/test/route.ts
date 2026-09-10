@@ -19,8 +19,13 @@ export async function POST(request: Request) {
       subject: String(body.subject || "Perpendicular Gmail connection test"),
       body: String(body.body || "Perpendicular sent this message through the connected Gmail mailbox."),
     });
-    await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "gmail.message_sent", resourceType: "gmail_message", resourceId: result.id, metadata: { to: body.to } });
-    return corsJson({ ok: true, messageId: result.id, threadId: result.threadId }, undefined, request);
+    let warning: string | undefined;
+    try {
+      await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "gmail.message_sent", resourceType: "gmail_message", resourceId: result.id, metadata: { to: body.to } });
+    } catch (error) {
+      warning = error instanceof Error ? `The email was sent, but its audit record failed: ${error.message}` : "The email was sent, but audit storage is unavailable.";
+    }
+    return corsJson({ ok: true, messageId: result.id, threadId: result.threadId, ...(warning ? { auditRecorded: false, warning } : { auditRecorded: true }) }, undefined, request);
   } catch (error) {
     return corsJson({ error: error instanceof Error ? error.message : "Gmail send failed." }, { status: 400 }, request);
   }
