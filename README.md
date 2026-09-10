@@ -1,5 +1,7 @@
 # Perpendicular
 
+[![Publish Perpendicular image](https://github.com/manankadel/perpendicular/actions/workflows/perpendicular-image.yml/badge.svg)](https://github.com/manankadel/perpendicular/actions/workflows/perpendicular-image.yml)
+
 Perpendicular is an open-source AI work system for small teams. It turns a real workspace source, a named employee, scoped knowledge, a scheduled task, and a visible evaluation trace into one operational loop.
 
 The production shape is deliberate: Vercel serves the browser UI; the Dell runs the API, Postgres, Ollama, and durable integration data. Blueblood ID is the identity authority. Gmail is an explicit OAuth connection with encrypted refresh-token storage, persisted inbox messages, and reply-pause behavior.
