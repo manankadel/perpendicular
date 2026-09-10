@@ -198,6 +198,17 @@ async function postWorkspace(request: Request): Promise<Response> {
       return json({ state: next, discovery: { title: next.workspace.onboarding.sourceTitle, description: next.workspace.onboarding.sourceDescription, url: next.workspace.onboarding.companyUrl } });
     }
 
+    if (action === "enroll-row") {
+      try {
+        const integrations = await listIntegrationSummaries(companyId);
+        if (integrations.find((integration) => integration.provider === "gmail")?.status !== "connected") {
+          return json({ error: "Connect Gmail before enrolling a lead in a sequence." }, { status: 400 });
+        }
+      } catch {
+        return json({ error: "Gmail connection status is unavailable. Apply the platform database migration." }, { status: 503 });
+      }
+    }
+
     if (action === "run-onboarding-brief") {
       const current = await getWorkspace(companyId);
       const onboarding = current.workspace.onboarding;

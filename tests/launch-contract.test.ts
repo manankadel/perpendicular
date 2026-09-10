@@ -110,6 +110,13 @@ test("Smart List imports deduplicate across the workspace", () => {
   assert.match(route, /state\.lists\.some\(\(candidate\) => candidate\.id !== list\.id/);
 });
 
+test("sequence enrollment is blocked until Gmail is connected", () => {
+  const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
+  const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
+  assert.match(route, /Connect Gmail before enrolling a lead in a sequence/);
+  assert.match(console, /Connect Gmail to enroll/);
+});
+
 test("public research does not follow unvalidated redirects or unbounded bodies", () => {
   const research = readFileSync(join(root, "src/lib/public-research.ts"), "utf8");
   assert.match(research, /redirect: "manual"/);
