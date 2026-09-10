@@ -50,10 +50,11 @@ The initial launch target is Tier 1/2: one monolithic API, one worker process, o
 - Cookies are only useful on `*.bluebloodstudio.com`; the Vercel default hostname is a demo surface and cannot be the canonical authenticated host.
 - Mutating browser requests require same-origin checks and a valid session. API-key requests are explicitly stateless and scoped.
 - Secrets stay on the Dell/Vercel environment. They never enter the browser bundle, Git history, logs, or audit payloads.
+- Workspace operators can export portable JSON without credentials, or permanently delete workspace-scoped data after an owner-only exact-ID confirmation.
 
 ## Current launch data model
 
-Postgres is the source of truth for production. The current workspace aggregate is stored in `perpendicular_workspace_state` so the first launch can preserve the domain contract while the remaining normalized domain tables are introduced. Integration credentials, OAuth states, API keys, audit events, jobs, and Gmail inbox records are already separate tables in `db/002_platform.sql`.
+Postgres is the source of truth for production. The current workspace aggregate is stored in `perpendicular_workspace_state` so the first launch can preserve the domain contract while the remaining normalized domain tables are introduced. Integration credentials, OAuth states, API keys, audit events, jobs, Gmail inbox records, provider health, webhook events, and usage ledger records are separate tables in `db/002_platform.sql`, `db/003_gmail_events_health.sql`, and `db/004_usage_ledger.sql`.
 
 Target normalized tables:
 
@@ -74,6 +75,7 @@ All tenant-owned tables include `workspace_id`, indexes begin with that key wher
 
 - The launch runner is a host-triggered heartbeat endpoint. It scans persisted due schedules, claims `perpendicular_jobs` with a lease and idempotency key, runs only due employees, and advances the next run time after success.
 - The launch worker uses Postgres leases for restart safety. Redis remains the scale-out seam for queue partitioning and distributed rate limits; the current API-key limiter is bounded in-memory per API process.
+- Credit consumption is persisted in `perpendicular_usage_ledger` and exposed through `/api/usage`; the aggregate credit balance remains the fast product guardrail.
 - Gmail sync is explicit and deduplicates by provider message ID. Sequence sends remain approval-gated until a durable sender worker is deployed.
 - Heartbeat jobs use bounded retries and a dead-letter state; no UI may report a background job as complete before its persisted result exists.
 - Provider webhooks are persisted before processing and deduplicated by provider event ID.

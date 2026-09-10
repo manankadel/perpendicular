@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildFallbackReply, buildOnboardingArtifacts, createInitialState, findRelevantDocuments, scoreRun } from "../src/lib/domain";
+import { buildFallbackReply, buildOnboardingArtifacts, createInitialState, findRelevantDocuments, scoreRun, ticketSlaMinutes } from "../src/lib/domain";
 
 test("seed workspace has the core employee -> knowledge -> run loop", () => {
   const state = createInitialState();
@@ -60,4 +60,11 @@ test("onboarding builds one real source and one scoped operator", () => {
   assert.deepEqual(result.document.employeeIds, [result.employee.id]);
   assert.match(result.employee.systemPrompt, /Blueblood Studio/);
   assert.match(result.task, /content/i);
+});
+
+test("ticket SLA windows follow the operational priority contract", () => {
+  assert.equal(ticketSlaMinutes("urgent"), 30);
+  assert.equal(ticketSlaMinutes("high"), 120);
+  assert.equal(ticketSlaMinutes("normal"), 480);
+  assert.equal(ticketSlaMinutes("low"), 1440);
 });

@@ -28,3 +28,12 @@ export function rejectCrossOrigin(request: Request) {
 export function hasPermission(context: IdentityContext, permission: string) {
   return context.role === "owner" || context.role === "super_admin" || context.permissions.includes("*") || context.permissions.includes(permission);
 }
+
+export function rateLimitHeaders(context: IdentityContext) {
+  if (!context.rateLimit) return {};
+  return {
+    "x-rate-limit-limit": String(context.rateLimit.limit),
+    "x-rate-limit-remaining": String(context.rateLimit.remaining),
+    "x-rate-limit-reset": String(Math.ceil(context.rateLimit.resetAt / 1000)),
+  };
+}

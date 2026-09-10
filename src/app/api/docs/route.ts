@@ -7,13 +7,17 @@ const document = {
   info: {
     title: "Perpendicular API",
     version: "1.0.0",
-    description: "Open API surface for workspace reads, employee runs, Gmail, and API-key management.",
+    description: "Open API surface for workspace reads, employee runs, Gmail, usage, privacy, and API-key management. All durable state is workspace-scoped.",
   },
   servers: [{ url: "https://perpendicular-api.bluebloodstudio.com" }],
   security: [{ bearerAuth: [] }],
   components: {
     securitySchemes: {
       bearerAuth: { type: "http", scheme: "bearer", description: "Blueblood ID JWT or a Perpendicular API key beginning with pp_live_." },
+    },
+    schemas: {
+      Error: { type: "object", required: ["error"], properties: { error: { type: "string" }, loginUrl: { type: "string", format: "uri" } } },
+      UsageSummary: { type: "object", required: ["periodStart", "periodEnd", "aiUnits", "dataUnits", "byFeature"], properties: { periodStart: { type: "string", format: "date-time" }, periodEnd: { type: "string", format: "date-time" }, aiUnits: { type: "integer" }, dataUnits: { type: "integer" }, byFeature: { type: "array", items: { type: "object", required: ["feature", "units"], properties: { feature: { type: "string" }, units: { type: "integer" } } } } } },
     },
   },
   paths: {
@@ -25,6 +29,9 @@ const document = {
       get: { responses: { "200": { description: "Workspace state scoped to the authenticated organization." }, "401": { description: "Authentication required." } } },
       post: { description: "Execute a workspace command. Current actions: chat, create-employee, create-document, run-employee, evaluate-employee, schedule-employee, enrich-row, enroll-row, create-ticket, resolve-ticket, rate-ticket.", responses: { "200": { description: "Updated workspace state." } } },
     },
+    "/api/workspace/export": { get: { description: "Download the authenticated workspace state, integration summaries, and usage ledger. Secrets are never included.", responses: { "200": { description: "Portable JSON export." }, "401": { description: "Authentication required." } } } },
+    "/api/workspace/privacy": { delete: { description: "Permanently delete all data for the authenticated workspace. Owner role and exact workspace ID confirmation are required.", requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["confirmation"], properties: { confirmation: { type: "string" } } } } } }, responses: { "200": { description: "Workspace data deleted." }, "400": { description: "Confirmation did not match." }, "403": { description: "Owner permission required." } } } },
+    "/api/usage": { get: { description: "Return persisted AI and data credit usage grouped by feature. The default period is 30 days; days may be 1–90.", parameters: [{ name: "days", in: "query", schema: { type: "integer", minimum: 1, maximum: 90 } }], responses: { "200": { description: "Usage summary.", content: { "application/json": { schema: { $ref: "#/components/schemas/UsageSummary" } } } }, "503": { description: "Usage migration is not available." } } } },
     "/api/integrations": { get: { responses: { "200": { description: "Connected integration summaries without secrets." } } } },
     "/api/integrations/google/start": { get: { description: "Start Google Gmail OAuth with PKCE. Browser session required.", responses: { "302": { description: "Redirect to Google consent." } } } },
     "/api/integrations/gmail/test": { post: { description: "Send an explicit test message through the connected Gmail mailbox.", responses: { "200": { description: "Message accepted by Gmail." } } } },

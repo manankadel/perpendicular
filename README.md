@@ -27,9 +27,11 @@ ALLOW_UNAUTHENTICATED_LOCAL=true ALLOW_LOCAL_LLM_FALLBACK=true npm run dev
 
 Local development can use the JSON state fallback. Production cannot: `DATABASE_URL`, `BLUEBLOOD_ID_*`, `INTEGRATION_ENCRYPTION_KEY`, and `CRON_SECRET` are required on the Dell. Ollama is required for production employee runs; the app fails clearly if it is unavailable.
 
+For a fully self-hosted local runtime, `docker compose up --build` starts Postgres, Redis, Qdrant, n8n, and the Perpendicular API. Apply the four SQL files once with `docker compose exec -T postgres psql -U perpendicular -d perpendicular < db/001_workspace_state.sql` (repeat for `db/002_platform.sql`, `db/003_gmail_events_health.sql`, and `db/004_usage_ledger.sql`). The Dell deployment does not use this development compose file; it pulls the immutable API image through `deploy/dell/perpendicular.image.compose.yml`.
+
 ## Database
 
-Apply `db/001_workspace_state.sql`, `db/002_platform.sql`, and `db/003_gmail_events_health.sql` to the dedicated `perpendicular` Postgres database. Do not use the shared Blueblood ID database for product state. The migrations contain workspace, integration, OAuth-state, API-key, audit, durable job, inbox, webhook-event, and integration-health tables.
+Apply `db/001_workspace_state.sql`, `db/002_platform.sql`, `db/003_gmail_events_health.sql`, and `db/004_usage_ledger.sql` to the dedicated `perpendicular` Postgres database. Do not use the shared Blueblood ID database for product state. The migrations contain workspace, integration, OAuth-state, API-key, audit, durable job, inbox, webhook-event, integration-health, and usage-ledger tables.
 
 ## Verify
 
@@ -41,7 +43,7 @@ npm run build
 npm audit --omit=dev --audit-level=high
 ```
 
-The API contract is available at `/api/docs`. The launch runbook and trust boundaries are in [`docs/production-architecture.md`](docs/production-architecture.md) and [`deploy/dell/README.md`](deploy/dell/README.md).
+The API contract is available at `/api/docs`. Authenticated operators can export their workspace at `/api/workspace/export` or permanently delete it through `/api/workspace/privacy` with an exact workspace-ID confirmation. The launch runbook and trust boundaries are in [`docs/production-architecture.md`](docs/production-architecture.md) and [`deploy/dell/README.md`](deploy/dell/README.md).
 
 The Dell release includes a verified Postgres backup script at `deploy/dell/backup-postgres.sh`. It is intentionally separate from application deploys; deploys never run migrations or touch the backup schedule.
 

@@ -36,3 +36,14 @@ export function sameOrigin(request: Request) {
   const origin = request.headers.get("origin");
   return isAllowedWebOrigin(origin);
 }
+
+const sensitiveKey = /(token|secret|password|authorization|cookie|refresh|private.?key|client.?secret)/i;
+
+export function redactAuditMetadata(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactAuditMetadata);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+    key,
+    sensitiveKey.test(key) ? "[REDACTED]" : redactAuditMetadata(entry),
+  ]));
+}

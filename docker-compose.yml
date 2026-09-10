@@ -1,4 +1,47 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: perpendicular-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: perpendicular
+      POSTGRES_USER: perpendicular
+      POSTGRES_PASSWORD: perpendicular-local-only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U perpendicular -d perpendicular"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - perpendicular_postgres:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: perpendicular-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - perpendicular_redis:/data
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    container_name: perpendicular-qdrant
+    restart: unless-stopped
+    volumes:
+      - perpendicular_qdrant:/qdrant/storage
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: perpendicular-n8n
+    restart: unless-stopped
+    environment:
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      N8N_SECURE_COOKIE: "false"
+      DB_TYPE: sqlite
+    volumes:
+      - perpendicular_n8n:/home/node/.n8n
+
   perpendicular:
     build: .
     container_name: perpendicular
@@ -9,10 +52,21 @@ services:
       - .env
     environment:
       NODE_ENV: production
+      DATABASE_URL: postgresql://perpendicular:perpendicular-local-only@postgres:5432/perpendicular
+      REDIS_URL: redis://redis:6379
+      QDRANT_URL: http://qdrant:6333
+      N8N_BASE_URL: http://n8n:5678
       DEFAULT_COMPANY_ID: ${DEFAULT_COMPANY_ID:-blueblood-demo}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - perpendicular_data:/app/data
 
 volumes:
   perpendicular_data:
+  perpendicular_postgres:
+  perpendicular_redis:
+  perpendicular_qdrant:
+  perpendicular_n8n:

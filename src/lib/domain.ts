@@ -146,6 +146,17 @@ export type Ticket = {
   csat: number | null;
 };
 
+export type UsageSummary = {
+  periodStart: string;
+  periodEnd: string;
+  aiUnits: number;
+  dataUnits: number;
+  byFeature: Array<{
+    feature: string;
+    units: number;
+  }>;
+};
+
 export type Activity = {
   id: string;
   type: "employee" | "run" | "lead" | "sequence" | "ticket" | "system";
@@ -207,6 +218,10 @@ export type WorkspaceState = {
 const now = () => new Date().toISOString();
 
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
+
+export function ticketSlaMinutes(priority: Ticket["priority"]) {
+  return { urgent: 30, high: 120, normal: 480, low: 1440 }[priority];
+}
 
 export function createOnboardingState(status: OnboardingState["status"] = "not_started"): OnboardingState {
   return {

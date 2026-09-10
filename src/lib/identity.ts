@@ -1,5 +1,6 @@
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { ApiKeyRateLimitError, authenticateApiKey } from "@/lib/api-keys";
+import type { RateLimitDecision } from "@/lib/rate-limit";
 
 export type IdentityMembership = {
   productSlug: string;
@@ -18,6 +19,7 @@ export type IdentityContext = {
   organizationId: string;
   role: string;
   permissions: string[];
+  rateLimit?: RateLimitDecision;
 };
 
 type IdentityClaims = JWTPayload & {
@@ -126,6 +128,7 @@ export async function authenticateRequest(request: Request): Promise<IdentityCon
         organizationId: record.workspaceId,
         role: "api",
         permissions: record.scopes,
+        rateLimit: record.rateLimit,
       };
     } catch (error) {
       if (error instanceof IdentityError) throw error;

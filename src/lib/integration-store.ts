@@ -1,7 +1,7 @@
 import "server-only";
 
 import { query, transaction } from "@/lib/database";
-import { decryptSecret, encryptSecret, randomToken, sha256 } from "@/lib/security";
+import { decryptSecret, encryptSecret, randomToken, redactAuditMetadata, sha256 } from "@/lib/security";
 
 export type IntegrationStatus = "not_configured" | "connected" | "degraded" | "disconnected";
 
@@ -278,7 +278,7 @@ export async function recordAuditEvent(args: {
       args.action,
       args.resourceType || null,
       args.resourceId || null,
-      JSON.stringify(args.metadata || {}),
+      JSON.stringify(redactAuditMetadata(args.metadata || {})),
     ],
   );
 }

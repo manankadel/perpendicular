@@ -4,6 +4,7 @@ import { getWorkspace, listWorkspaceIds, updateWorkspace } from "@/lib/server-st
 import { generateEmployeeReply } from "@/lib/llm";
 import { claimJob, completeJob, failJob } from "@/lib/job-store";
 import { renewGmailWatchIfNeeded } from "@/lib/gmail";
+import { recordUsage } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -75,6 +76,7 @@ export async function POST(request: Request) {
           return workspace;
         });
         await completeJob(claim);
+        if (ran) await recordUsage({ workspaceId: companyId, actorId: "heartbeat", feature: "heartbeat_run", unit: "ai", units: 2 });
         if (ran) runCount += 1;
       } catch (error) {
         failedCount += 1;

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { decryptSecret, encryptSecret, sha256 } from "../src/lib/security";
+import { decryptSecret, encryptSecret, redactAuditMetadata, sha256 } from "../src/lib/security";
 
 test("hashes API secrets deterministically without exposing the secret", () => {
   assert.equal(sha256("pp_live_test"), sha256("pp_live_test"));
@@ -17,3 +17,10 @@ test("encrypts integration secrets with authenticated encryption", () => {
   else process.env.INTEGRATION_ENCRYPTION_KEY = previous;
 });
 
+test("redacts credential-shaped audit metadata recursively", () => {
+  assert.deepEqual(redactAuditMetadata({ action: "oauth", accessToken: "secret", nested: { client_secret: "secret-2", safe: "kept" } }), {
+    action: "oauth",
+    accessToken: "[REDACTED]",
+    nested: { client_secret: "[REDACTED]", safe: "kept" },
+  });
+});

@@ -6,6 +6,7 @@ import {
   createOnboardingState,
   scoreRun,
   timestamp,
+  ticketSlaMinutes,
   type OnboardingDiscovery,
   type OnboardingGoal,
   type Employee,
@@ -18,6 +19,7 @@ import { hasPermission, rejectCrossOrigin } from "@/lib/route-auth";
 import { listIntegrationSummaries, recordAuditEvent } from "@/lib/integration-store";
 import { researchPersonCompany, researchWebsite } from "@/lib/public-research";
 import { corsHeadersFor } from "@/lib/cors";
+import { recordUsage } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -216,6 +218,7 @@ async function postWorkspace(request: Request): Promise<Response> {
         return state;
       });
       try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.onboarding_run", resourceType: "employee", resourceId: employee.id }); } catch (error) { if (process.env.NODE_ENV === "production") return json({ error: error instanceof Error ? error.message : "Audit storage is unavailable." }, { status: 503 }); }
+      await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "onboarding_brief", unit: "ai", units: 2 });
       return json(next);
     }
 
@@ -259,6 +262,7 @@ async function postWorkspace(request: Request): Promise<Response> {
         return state;
       });
       try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.chat", resourceType: "employee", resourceId: employeeId }); } catch (error) { if (process.env.NODE_ENV === "production") return json({ error: error instanceof Error ? error.message : "Audit storage is unavailable." }, { status: 503 }); }
+      await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "employee_chat", unit: "ai", units: 1, provider: result.provider });
       return json({ state: next, provider: result.provider });
     }
 
@@ -445,20 +449,21 @@ async function postWorkspace(request: Request): Promise<Response> {
           const subject = String(body.subject || "").trim();
           const message = String(body.message || "").trim();
           if (!subject || !message) throw new Error("Ticket subject and message are required.");
+          const priority = (["low", "normal", "high", "urgent"] as const).includes(body.priority as never) ? body.priority as "low" | "normal" | "high" | "urgent" : "normal";
           const ticket = {
             id: createId("ticket"),
             subject,
-            requester: "Blueblood Studio",
+            requester: identity.context.email || identity.context.workspaceId,
             message,
-            priority: (["low", "normal", "high", "urgent"] as const).includes(body.priority as never) ? body.priority as "low" | "normal" | "high" | "urgent" : "normal",
+            priority,
             status: "open" as const,
             createdAt: timestamp(),
-            slaDueAt: new Date(Date.now() + 1000 * 60 * 120).toISOString(),
+            slaDueAt: new Date(Date.now() + 1000 * 60 * ticketSlaMinutes(priority)).toISOString(),
             assignee: "Rhea",
             csat: null,
           };
           state.tickets.unshift(ticket);
-          addActivity(state, { type: "ticket", title: `Ticket ${ticket.id} opened`, detail: `${ticket.priority} priority · SLA in 120 min`, });
+          addActivity(state, { type: "ticket", title: `Ticket ${ticket.id} opened`, detail: `${ticket.priority} priority · SLA in ${ticketSlaMinutes(ticket.priority)} min`, });
           return state;
         }
         case "resolve-ticket": {
@@ -484,6 +489,12 @@ async function postWorkspace(request: Request): Promise<Response> {
       await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: `workspace.${action}`, metadata: { action } });
     } catch (error) {
       if (process.env.NODE_ENV === "production") return json({ error: error instanceof Error ? error.message : "Audit storage is unavailable." }, { status: 503 });
+    }
+    if (action === "run-employee" || action === "evaluate-employee") {
+      await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: action === "run-employee" ? "employee_run" : "employee_evaluation", unit: "ai", units: 2 });
+    }
+    if (action === "enrich-row") {
+      await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "public_research", unit: "data", units: 2 });
     }
     return json(updated);
   } catch (error) {
