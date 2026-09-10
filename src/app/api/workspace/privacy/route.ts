@@ -45,10 +45,10 @@ export async function DELETE(request: Request) {
         "perpendicular_usage_ledger",
         "perpendicular_jobs",
         "perpendicular_audit_events",
-        "perpendicular_workspace_state",
       ]) {
         await client.query(`delete from ${table} where workspace_id = $1`, [identity.workspaceId]);
       }
+      await client.query("delete from perpendicular_workspace_state where company_id = $1", [identity.workspaceId]);
     });
     return corsJson({ ok: true, deleted: true, workspaceId: identity.workspaceId }, { status: 200 }, request);
   } catch (error) {
