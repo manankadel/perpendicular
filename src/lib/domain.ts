@@ -539,7 +539,7 @@ export function createInitialState(companyId = "blueblood-demo"): WorkspaceState
             intent: "Launching outbound",
             companyInsight: "Bootstrapped · strong product signal · founder still owns sales",
             enrollmentStatus: "not enrolled",
-            lastAction: "Enriched via local demo provider",
+            lastAction: "Enriched from public company evidence",
           },
           {
             id: "row-loom",
