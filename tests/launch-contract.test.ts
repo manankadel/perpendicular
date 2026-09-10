@@ -52,6 +52,12 @@ test("REST surfaces enforce API-key scopes for reads and Gmail mutations", () =>
   assert.match(gmailDisconnect, /hasPermission\(identity\.context, "settings:write"\)/);
 });
 
+test("credit-consuming enrichment requires workspace write permission", () => {
+  const workspace = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
+  assert.match(workspace, /const requiredPermission = action === "chat" \? "workspace:read" : "workspace:write"/);
+  assert.match(workspace, /if \(action === "enrich-row"\)/);
+});
+
 test("API key creation only accepts supported scopes", () => {
   const route = readFileSync(join(root, "src/app/api/keys/route.ts"), "utf8");
   const scopes = readFileSync(join(root, "src/lib/api-keys.ts"), "utf8");
