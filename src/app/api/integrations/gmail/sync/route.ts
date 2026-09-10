@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { recordAuditEvent } from "@/lib/integration-store";
 import { syncGmailWorkspace } from "@/lib/gmail-sync";
 import { hasPermission, identityOrResponse, rejectCrossOrigin } from "@/lib/route-auth";
@@ -12,7 +11,7 @@ export async function POST(request: Request) {
   if (originError) return originError;
   const identity = await identityOrResponse(request);
   if ("response" in identity) return identity.response;
-  if (!hasPermission(identity.context, "workspace:read")) return NextResponse.json({ error: "You do not have permission to sync Gmail." }, { status: 403 });
+  if (!hasPermission(identity.context, "settings:write")) return corsJson({ error: "You do not have permission to sync Gmail." }, { status: 403 }, request);
   try {
     const synced = await syncGmailWorkspace(identity.context.workspaceId);
     let warning: string | undefined;
