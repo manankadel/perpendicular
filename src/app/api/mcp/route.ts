@@ -75,13 +75,13 @@ export async function POST(request: Request) {
       });
       try {
         await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.employee_chat", resourceType: "employee", resourceId: employeeId });
-      } catch (error) {
-        if (process.env.NODE_ENV === "production") return persistedFailure(id, state, error instanceof Error ? `The chat reply was saved, but its audit record failed: ${error.message}` : "The chat reply was saved, but audit storage is unavailable.");
+      } catch {
+        if (process.env.NODE_ENV === "production") return persistedFailure(id, state, "The chat reply was saved, but its audit record could not be stored.");
       }
       try {
         await recordUsage({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, feature: "employee_chat", unit: "ai", units: 1, provider: generated.provider });
-      } catch (error) {
-        if (process.env.NODE_ENV === "production") return persistedFailure(id, state, error instanceof Error ? `The chat reply was saved, but its usage record failed: ${error.message}` : "The chat reply was saved, but usage storage is unavailable.");
+      } catch {
+        if (process.env.NODE_ENV === "production") return persistedFailure(id, state, "The chat reply was saved, but its usage record could not be stored.");
       }
       return respond({ jsonrpc: "2.0", id, result: result({ content: generated.content, citations: generated.citations, provider: generated.provider, state }) });
     }
@@ -104,13 +104,13 @@ export async function POST(request: Request) {
       });
       try {
         await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.employee_run", resourceType: "employee", resourceId: employeeId });
-      } catch (error) {
-        if (process.env.NODE_ENV === "production") return persistedFailure(id, state, error instanceof Error ? `The run was saved, but its audit record failed: ${error.message}` : "The run was saved, but audit storage is unavailable.");
+      } catch {
+        if (process.env.NODE_ENV === "production") return persistedFailure(id, state, "The run was saved, but its audit record could not be stored.");
       }
       try {
         await recordUsage({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, feature: "employee_run", unit: "ai", units: 2, provider: generated.provider });
-      } catch (error) {
-        if (process.env.NODE_ENV === "production") return persistedFailure(id, state, error instanceof Error ? `The run was saved, but its usage record failed: ${error.message}` : "The run was saved, but usage storage is unavailable.");
+      } catch {
+        if (process.env.NODE_ENV === "production") return persistedFailure(id, state, "The run was saved, but its usage record could not be stored.");
       }
       return respond({ jsonrpc: "2.0", id, result: result({ output: generated.content, provider: generated.provider, state }) });
     }

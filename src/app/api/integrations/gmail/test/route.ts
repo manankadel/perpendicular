@@ -22,8 +22,8 @@ export async function POST(request: Request) {
     let warning: string | undefined;
     try {
       await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "gmail.message_sent", resourceType: "gmail_message", resourceId: result.id, metadata: { to: body.to } });
-    } catch (error) {
-      warning = error instanceof Error ? `The email was sent, but its audit record failed: ${error.message}` : "The email was sent, but audit storage is unavailable.";
+    } catch {
+      warning = "The email was sent, but its audit record could not be stored.";
     }
     return corsJson({ ok: true, messageId: result.id, threadId: result.threadId, ...(warning ? { auditRecorded: false, warning } : { auditRecorded: true }) }, undefined, request);
   } catch (error) {

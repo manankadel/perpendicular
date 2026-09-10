@@ -15,8 +15,8 @@ export async function POST(request: Request) {
   let warning: string | undefined;
   try {
     await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "integration.disconnected", resourceType: "integration", resourceId: "gmail" });
-  } catch (error) {
-    warning = error instanceof Error ? `Gmail was disconnected, but its audit record failed: ${error.message}` : "Gmail was disconnected, but audit storage is unavailable.";
+  } catch {
+    warning = "Gmail was disconnected, but its audit record could not be stored.";
   }
   return corsJson({ ok: true, ...(warning ? { auditRecorded: false, warning } : { auditRecorded: true }) }, undefined, request);
 }

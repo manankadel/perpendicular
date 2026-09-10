@@ -17,8 +17,8 @@ export async function POST(request: Request) {
     let warning: string | undefined;
     try {
       await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "gmail.synced", resourceType: "gmail", metadata: { count: synced.count, insertedCount: synced.insertedCount, historyId: synced.historyId } });
-    } catch (error) {
-      warning = error instanceof Error ? `Inbox sync completed, but its audit record failed: ${error.message}` : "Inbox sync completed, but audit storage is unavailable.";
+    } catch {
+      warning = "Inbox sync completed, but its audit record could not be stored.";
     }
     return corsJson({ ok: true, count: synced.count, state: synced.state, ...(warning ? { auditRecorded: false, warning } : { auditRecorded: true }) }, undefined, request);
   } catch (error) {

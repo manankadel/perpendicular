@@ -34,8 +34,8 @@ export async function POST(request: Request) {
     let auditWarning: string | undefined;
     try {
       await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "api_key.created", resourceType: "api_key", resourceId: key.id, metadata: { name, scopes } });
-    } catch (error) {
-      auditWarning = error instanceof Error ? `The key was created, but its audit record failed: ${error.message}` : "The key was created, but audit storage is unavailable.";
+    } catch {
+      auditWarning = "The key was created, but its audit record could not be stored.";
     }
     return corsJson({ ...key, warning: ["Copy this key now. It will never be shown again.", auditWarning].filter(Boolean).join(" "), auditRecorded: !auditWarning }, { status: 201, headers: rateLimitHeaders(identity.context) }, request);
   } catch (error) {

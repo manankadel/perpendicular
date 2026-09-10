@@ -17,8 +17,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   let warning: string | undefined;
   try {
     await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "api_key.revoked", resourceType: "api_key", resourceId: id });
-  } catch (error) {
-    warning = error instanceof Error ? `The key was revoked, but its audit record failed: ${error.message}` : "The key was revoked, but audit storage is unavailable.";
+  } catch {
+    warning = "The key was revoked, but its audit record could not be stored.";
   }
   return corsJson({ ok: true, ...(warning ? { auditRecorded: false, warning } : { auditRecorded: true }) }, { headers: rateLimitHeaders(identity.context) }, request);
 }
