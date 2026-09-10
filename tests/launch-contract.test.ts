@@ -29,6 +29,12 @@ test("workspace deletion requires owner confirmation in the route contract", () 
   assert.match(route, /delete from perpendicular_workspace_state where company_id = \$1/);
 });
 
+test("workspace exports neutralize spreadsheet formulas and unsafe filenames", () => {
+  const route = readFileSync(join(root, "src/app/api/workspace/export/route.ts"), "utf8");
+  assert.match(route, /filenameWorkspaceId = identity\.workspaceId\.replace/);
+  assert.match(route, /\^\[=\+\\-@\]/);
+});
+
 test("operator controls expose webhook and dead-letter replay paths", () => {
   const route = readFileSync(join(root, "src/app/api/ops/route.ts"), "utf8");
   assert.match(route, /replay-webhook/);

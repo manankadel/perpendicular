@@ -25,17 +25,22 @@ export async function GET(request: Request) {
       integrations,
       usage,
     };
+    const filenameWorkspaceId = identity.workspaceId.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 80) || "workspace";
     if (url.searchParams.get("format") === "csv") {
       const rows = workspace.lists.flatMap((list) => list.rows.map((row) => ({ list: list.name, ...row })));
       const columns = ["list", "id", "name", "email", "company", "role", "location", "score", "status", "emailStatus", "intent", "companyInsight", "enrollmentStatus", "lastAction"] as const;
-      const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+      const escape = (value: unknown) => {
+        const text = String(value ?? "");
+        const safe = /^[=+\-@]/.test(text) ? `'${text}` : text;
+        return `"${safe.replaceAll('"', '""')}"`;
+      };
       const csv = [columns.join(","), ...rows.map((row) => columns.map((column) => escape(row[column])).join(","))].join("\n");
       return new Response(csv, {
         status: 200,
         headers: {
           ...corsHeadersFor(request),
           "content-type": "text/csv; charset=utf-8",
-          "content-disposition": `attachment; filename="perpendicular-${identity.workspaceId}-rows.csv"`,
+          "content-disposition": `attachment; filename="perpendicular-${filenameWorkspaceId}-rows.csv"`,
           "cache-control": "no-store",
         },
       });
@@ -43,7 +48,7 @@ export async function GET(request: Request) {
     return NextResponse.json(exportPayload, {
       headers: {
         ...corsHeadersFor(request),
-        "content-disposition": `attachment; filename="perpendicular-${identity.workspaceId}-export.json"`,
+        "content-disposition": `attachment; filename="perpendicular-${filenameWorkspaceId}-export.json"`,
         "cache-control": "no-store",
       },
     });
