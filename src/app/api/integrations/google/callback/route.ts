@@ -27,15 +27,20 @@ export async function GET(request: Request) {
       try { await watchGmail(oauthState.workspaceId); }
       catch (error) { await recordIntegrationHealth(oauthState.workspaceId, "gmail", "degraded", "watch_registration_failed", error instanceof Error ? error.message : "Gmail watch registration failed."); }
     }
-    await recordAuditEvent({
-      workspaceId: oauthState.workspaceId,
-      actorId: oauthState.userId,
-      action: "integration.connected",
-      resourceType: "integration",
-      resourceId: "gmail",
-      metadata: { provider: "google", accountEmail: profile.email },
-    });
-    return NextResponse.redirect(`${destination}/?gmail=connected`);
+    let auditWarning = false;
+    try {
+      await recordAuditEvent({
+        workspaceId: oauthState.workspaceId,
+        actorId: oauthState.userId,
+        action: "integration.connected",
+        resourceType: "integration",
+        resourceId: "gmail",
+        metadata: { provider: "google", accountEmail: profile.email },
+      });
+    } catch {
+      auditWarning = true;
+    }
+    return NextResponse.redirect(`${destination}/?gmail=connected${auditWarning ? "&audit=warning" : ""}`);
   } catch {
     return NextResponse.redirect(`${destination}/?gmail=error`);
   }

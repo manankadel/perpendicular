@@ -133,7 +133,10 @@ test("external side effects do not masquerade as failures when audit storage is 
   const gmail = readFileSync(join(root, "src/app/api/integrations/gmail/test/route.ts"), "utf8");
   const keys = readFileSync(join(root, "src/app/api/keys/route.ts"), "utf8");
   const bootstrap = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
+  const callback = readFileSync(join(root, "src/app/api/integrations/google/callback/route.ts"), "utf8");
   assert.match(gmail, /The email was sent/);
   assert.match(keys, /The key was created/);
   assert.match(bootstrap, /The workspace was created/);
+  assert.match(callback, /gmail=connected/);
+  assert.match(callback, /audit=warning/);
 });
