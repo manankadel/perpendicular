@@ -12,10 +12,8 @@ export async function GET(request: Request) {
   try {
     const identity = await authenticateRequest(request);
     const url = new URL(request.url);
-    const [workspace, integrations] = await Promise.all([
-      getWorkspace(identity.workspaceId),
-      listIntegrationSummaries(identity.workspaceId),
-    ]);
+    const workspace = await getWorkspace(identity.workspaceId);
+    const integrations = await listIntegrationSummaries(identity.workspaceId).catch(() => workspace.integrations || []);
     const usage = await getUsageSummary(identity.workspaceId).catch(() => null);
     const exportPayload = {
       exportedAt: new Date().toISOString(),
