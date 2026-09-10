@@ -36,6 +36,7 @@ export async function POST(request: Request) {
     for (const [name, value] of Object.entries(rateLimitHeaders(identity.context))) headers.set(name, value);
     return corsJson(body, { ...init, headers }, request);
   };
+  const persistedFailure = (id: string | number | null, state: WorkspaceState, message: string) => respond({ jsonrpc: "2.0", id, error: { code: -32001, message, data: { persisted: true, state } } }, { status: 503 });
   let body: { jsonrpc?: string; id?: string | number; method?: string; params?: { name?: string; arguments?: Record<string, unknown> } };
   try { body = await request.json() as typeof body; } catch { return corsJson({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Invalid JSON." } }, { status: 400 }, request); }
   const id = body.id ?? null;
@@ -72,8 +73,16 @@ export async function POST(request: Request) {
         addActivity(workspace, { type: "run", title: `${employee.name} answered via MCP`, detail: `${generated.provider} · ${generated.citations.length} source${generated.citations.length === 1 ? "" : "s"}`, });
         return workspace;
       });
-      await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.employee_chat", resourceType: "employee", resourceId: employeeId });
-      await recordUsage({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, feature: "employee_chat", unit: "ai", units: 1, provider: generated.provider });
+      try {
+        await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.employee_chat", resourceType: "employee", resourceId: employeeId });
+      } catch (error) {
+        if (process.env.NODE_ENV === "production") return persistedFailure(id, state, error instanceof Error ? `The chat reply was saved, but its audit record failed: ${error.message}` : "The chat reply was saved, but audit storage is unavailable.");
+      }
+      try {
+        await recordUsage({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, feature: "employee_chat", unit: "ai", units: 1, provider: generated.provider });
+      } catch (error) {
+        if (process.env.NODE_ENV === "production") return persistedFailure(id, state, error instanceof Error ? `The chat reply was saved, but its usage record failed: ${error.message}` : "The chat reply was saved, but usage storage is unavailable.");
+      }
       return respond({ jsonrpc: "2.0", id, result: result({ content: generated.content, citations: generated.citations, provider: generated.provider, state }) });
     }
     if (name === "employee_run") {
@@ -93,13 +102,21 @@ export async function POST(request: Request) {
         addActivity(workspace, { type: "run", title: `${employee.name} completed an MCP run`, detail: task });
         return workspace;
       });
-      await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.employee_run", resourceType: "employee", resourceId: employeeId });
-      await recordUsage({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, feature: "employee_run", unit: "ai", units: 2, provider: generated.provider });
+      try {
+        await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.employee_run", resourceType: "employee", resourceId: employeeId });
+      } catch (error) {
+        if (process.env.NODE_ENV === "production") return persistedFailure(id, state, error instanceof Error ? `The run was saved, but its audit record failed: ${error.message}` : "The run was saved, but audit storage is unavailable.");
+      }
+      try {
+        await recordUsage({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, feature: "employee_run", unit: "ai", units: 2, provider: generated.provider });
+      } catch (error) {
+        if (process.env.NODE_ENV === "production") return persistedFailure(id, state, error instanceof Error ? `The run was saved, but its usage record failed: ${error.message}` : "The run was saved, but usage storage is unavailable.");
+      }
       return respond({ jsonrpc: "2.0", id, result: result({ output: generated.content, provider: generated.provider, state }) });
     }
     throw new Error("Unknown MCP tool.");
   } catch (error) {
-    return corsJson({ jsonrpc: "2.0", id, error: { code: -32000, message: error instanceof Error ? error.message : "MCP request failed." } }, { status: 400 }, request);
+    return respond({ jsonrpc: "2.0", id, error: { code: -32000, message: error instanceof Error ? error.message : "MCP request failed." } }, { status: 400 });
   }
 }
 

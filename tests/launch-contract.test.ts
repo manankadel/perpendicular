@@ -120,3 +120,11 @@ test("persisted workspace actions return state when audit or usage logging fails
   assert.match(route, /state: next/);
   assert.match(console, /if \(nextState\) \{/);
 });
+
+test("MCP mutations expose persisted state when audit or usage logging fails", () => {
+  const mcp = readFileSync(join(root, "src/app/api/mcp/route.ts"), "utf8");
+  assert.match(mcp, /persistedFailure/);
+  assert.match(mcp, /persisted: true/);
+  assert.match(mcp, /mcp\.employee_chat/);
+  assert.match(mcp, /mcp\.employee_run/);
+});
