@@ -104,6 +104,12 @@ test("sequence enrollment has a persisted suppression guard", () => {
   assert.match(docs, /suppress-row/);
 });
 
+test("Smart List imports deduplicate across the workspace", () => {
+  const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
+  assert.match(route, /already exists in another Smart List in this workspace/);
+  assert.match(route, /state\.lists\.some\(\(candidate\) => candidate\.id !== list\.id/);
+});
+
 test("public research does not follow unvalidated redirects or unbounded bodies", () => {
   const research = readFileSync(join(root, "src/lib/public-research.ts"), "utf8");
   assert.match(research, /redirect: "manual"/);

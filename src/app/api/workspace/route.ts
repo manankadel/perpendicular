@@ -340,6 +340,7 @@ async function postWorkspace(request: Request): Promise<Response> {
           if (!list || !name || !company || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("List, name, company, and a valid email are required.");
           if (state.suppressedEmails.includes(email)) throw new Error("This address is suppressed for the workspace.");
           if (list.rows.some((row) => row.email.toLowerCase() === email)) throw new Error("This email is already in the list.");
+          if (state.lists.some((candidate) => candidate.id !== list.id && candidate.rows.some((row) => row.email.toLowerCase() === email))) throw new Error("This email already exists in another Smart List in this workspace.");
           list.rows.unshift({ id: createId("row"), name, email, company, role: String(body.role || "Unknown"), location: String(body.location || "Unknown"), score: 50, status: "new", emailStatus: "unknown", intent: "Imported lead", companyInsight: "No public research captured yet", enrollmentStatus: "not enrolled", lastAction: "Imported by workspace operator" });
           list.updatedAt = timestamp();
           addActivity(state, { type: "lead", title: `${name} was imported`, detail: `${company} · ${list.name}`, });
