@@ -86,3 +86,9 @@ test("unconfigured Gmail is represented honestly instead of opening a dead OAuth
   assert.match(store, /status: "not_configured"/);
   assert.match(console, /Gmail OAuth is not configured on the Dell/);
 });
+
+test("pricing explicitly identifies the open-source launch", () => {
+  const pricing = readFileSync(join(root, "src/app/api/pricing/route.ts"), "utf8");
+  assert.match(pricing, /openSource: true/);
+  assert.match(pricing, /checkout: false/);
+});

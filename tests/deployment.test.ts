@@ -10,6 +10,7 @@ const workflow = readFileSync(join(root, ".github/workflows/perpendicular-image.
 const serverStore = readFileSync(join(root, "src/lib/server-store.ts"), "utf8");
 const healthRoute = readFileSync(join(root, "src/app/api/health/route.ts"), "utf8");
 const database = readFileSync(join(root, "src/lib/database.ts"), "utf8");
+const productionSmoke = readFileSync(join(root, "scripts/production-smoke.mjs"), "utf8");
 
 test("Dell image overlay cannot fall back to a production source build", () => {
   assert.match(overlay, /image: \$\{PERPENDICULAR_IMAGE:\?/);
@@ -53,4 +54,12 @@ test("database connections retry after a transient outage", () => {
   assert.match(database, /unavailableUntil/);
   assert.match(database, /databaseRetryBackoffMs/);
   assert.match(database, /Date\.now\(\) < unavailableUntil/);
+});
+
+test("production smoke checks cover public launch gates", () => {
+  assert.match(productionSmoke, /API health and launch configuration/);
+  assert.match(productionSmoke, /credentialed CORS preflight/);
+  assert.match(productionSmoke, /unauthenticated workspace rejection/);
+  assert.match(productionSmoke, /OpenAPI documentation/);
+  assert.match(productionSmoke, /truthful pricing endpoint/);
 });

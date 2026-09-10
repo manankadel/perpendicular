@@ -9,7 +9,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "check": "npm run test && npm run typecheck && npm run lint && npm run build"
+    "check": "npm run test && npm run typecheck && npm run lint && npm run build",
+    "smoke:production": "node scripts/production-smoke.mjs"
   },
   "dependencies": {
     "jose": "^6.2.11",

@@ -43,6 +43,8 @@ npm run typecheck
 npm run lint
 npm run build
 npm audit --omit=dev --audit-level=high
+# Read-only deployed-stack gate (after the Dell image is promoted)
+npm run smoke:production
 ```
 
 The API contract is available at `/api/docs`. Authenticated operators can export their workspace at `/api/workspace/export` or permanently delete it through `/api/workspace/privacy` with an exact workspace-ID confirmation. The launch runbook and trust boundaries are in [`docs/production-architecture.md`](docs/production-architecture.md) and [`deploy/dell/README.md`](deploy/dell/README.md).
