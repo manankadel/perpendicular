@@ -34,6 +34,7 @@ export async function DELETE(request: Request) {
 
   try {
     await transaction(async (client) => {
+      await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [identity.workspaceId]);
       for (const table of [
         "perpendicular_inbox_messages",
         "perpendicular_inbox_threads",

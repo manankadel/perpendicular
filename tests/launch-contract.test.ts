@@ -26,6 +26,7 @@ test("workspace deletion requires owner confirmation in the route contract", () 
   const route = readFileSync(join(root, "src/app/api/workspace/privacy/route.ts"), "utf8");
   assert.match(route, /Only a workspace owner/);
   assert.match(route, /body\.confirmation !== identity\.workspaceId/);
+  assert.match(route, /pg_advisory_xact_lock\(hashtextextended\(\$1, 0\)\)/);
   assert.match(route, /delete from perpendicular_workspace_state where company_id = \$1/);
 });
 
