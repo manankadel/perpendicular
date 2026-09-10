@@ -21,6 +21,17 @@ const requiredTables = [
 export async function GET() {
   const database = await getDatabase();
   const production = process.env.NODE_ENV === "production";
+  const gmailOAuthConfigured = Boolean(
+    (process.env.GOOGLE_GMAIL_CLIENT_ID || process.env.GOOGLE_OAUTH_CLIENT_ID)
+      && (process.env.GOOGLE_GMAIL_CLIENT_SECRET || process.env.GOOGLE_OAUTH_CLIENT_SECRET),
+  );
+  const gmailPushConfigured = Boolean(!process.env.GMAIL_PUBSUB_TOPIC || process.env.GMAIL_WEBHOOK_SECRET);
+  const integrationEncryptionConfigured = Boolean(process.env.INTEGRATION_ENCRYPTION_KEY);
+  const configurationGaps = [
+    !gmailOAuthConfigured ? "gmail_oauth" : null,
+    !gmailPushConfigured ? "gmail_webhook_secret" : null,
+    !integrationEncryptionConfigured ? "integration_encryption_key" : null,
+  ].filter((gap): gap is string => Boolean(gap));
   let schema: { ok: boolean; missingTables: string[] } | null = null;
   if (database) {
     try {
@@ -63,6 +74,13 @@ export async function GET() {
     schema,
     model: process.env.DISABLE_OLLAMA === "true" ? "disabled" : "ollama",
     version: process.env.PERPENDICULAR_BUILD_SHA || process.env.npm_package_version || "unknown",
+    configuration: {
+      ok: configurationGaps.length === 0,
+      gaps: configurationGaps,
+      gmailOAuth: gmailOAuthConfigured,
+      gmailPush: gmailPushConfigured,
+      integrationEncryption: integrationEncryptionConfigured,
+    },
     operations,
   }, { status: production && !ok ? 503 : 200 });
 }

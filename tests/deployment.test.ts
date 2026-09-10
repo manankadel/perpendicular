@@ -42,6 +42,13 @@ test("production health fails closed when required migrations are missing", () =
   assert.match(healthRoute, /status: production && !ok \? 503 : 200/);
 });
 
+test("health reports provider configuration gaps without exposing secrets", () => {
+  assert.match(healthRoute, /gmailOAuth/);
+  assert.match(healthRoute, /gmailPush/);
+  assert.match(healthRoute, /integrationEncryption/);
+  assert.match(healthRoute, /configurationGaps/);
+});
+
 test("database connections retry after a transient outage", () => {
   assert.match(database, /unavailableUntil/);
   assert.match(database, /databaseRetryBackoffMs/);
