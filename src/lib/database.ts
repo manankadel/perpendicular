@@ -1,14 +1,15 @@
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
 
 let pool: Pool | null = null;
-let unavailable = false;
+let unavailableUntil = 0;
+const databaseRetryBackoffMs = 5_000;
 
 export function databaseConfigured() {
   return Boolean(process.env.DATABASE_URL);
 }
 
 export async function getDatabase() {
-  if (!process.env.DATABASE_URL || unavailable) return null;
+  if (!process.env.DATABASE_URL || Date.now() < unavailableUntil) return null;
   if (!pool) {
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
@@ -21,9 +22,10 @@ export async function getDatabase() {
 
   try {
     await pool.query("select 1");
+    unavailableUntil = 0;
     return pool;
   } catch {
-    unavailable = true;
+    unavailableUntil = Date.now() + databaseRetryBackoffMs;
     await pool.end().catch(() => undefined);
     pool = null;
     return null;
