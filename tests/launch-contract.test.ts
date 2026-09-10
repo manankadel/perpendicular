@@ -67,3 +67,12 @@ test("Google sign-in stays product-owned and uses a safe return path", () => {
   assert.match(route, /PERPENDICULAR_WEB_ORIGIN/);
   assert.match(login, /api\/auth\/google\/start/);
 });
+
+test("Gmail sync has a workspace-scoped inbox read surface", () => {
+  const route = readFileSync(join(root, "src/app/api/inbox/route.ts"), "utf8");
+  const inbox = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
+  assert.match(route, /listInboxMessages/);
+  assert.match(route, /workspace:read/);
+  assert.match(inbox, /Gmail inbox/);
+  assert.match(inbox, /apiPath\("\/api\/inbox"\)/);
+});

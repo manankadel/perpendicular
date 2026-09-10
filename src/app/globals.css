@@ -290,6 +290,14 @@ button:disabled { cursor: wait; opacity: .52; }
 .sequence-footer { display: flex; justify-content: end; padding: 11px 18px; border-top: 1px solid var(--line); }
 
 .ticket-list { display: grid; gap: 0; }
+.mail-list { display: grid; gap: 0; }
+.mail-row { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 16px; padding: 16px 18px; border-bottom: 1px solid rgba(41,48,55,.72); }
+.mail-row:last-child { border-bottom: 0; }
+.mail-direction { display: flex; align-items: start; gap: 6px; color: var(--mint); font-size: 10px; text-transform: capitalize; }
+.mail-main { min-width: 0; }
+.mail-subject { color: var(--text); font-size: 12px; font-weight: 700; }
+.mail-meta { margin-top: 4px; color: var(--text-dim); font-size: 10px; }
+.mail-main p { margin: 8px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; white-space: pre-wrap; }
 .ticket { display: grid; grid-template-columns: 90px minmax(0, 1fr) auto; gap: 15px; align-items: start; padding: 17px 18px; border-bottom: 1px solid rgba(41,48,55,.72); }
 .ticket:last-child { border-bottom: 0; }
 .ticket-id { color: var(--text-dim); font-size: 10px; font-weight: 700; }
