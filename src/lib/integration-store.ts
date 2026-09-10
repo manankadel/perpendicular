@@ -117,17 +117,29 @@ export async function saveGmailConnection(args: {
   scopes: string[];
 }) {
   const encrypted = encryptSecret(args.refreshToken);
-  await query(
-    `insert into perpendicular_integrations
-      (id, workspace_id, provider, status, account_email, provider_account_id, encrypted_refresh_token, scopes, metadata, updated_at)
-     values ($1, $2, 'gmail', 'connected', $3, $4, $5, $6, '{}'::jsonb, now())
-     on conflict (workspace_id, provider) do update set
-       status = 'connected', account_email = excluded.account_email,
-       provider_account_id = excluded.provider_account_id,
-       encrypted_refresh_token = excluded.encrypted_refresh_token,
-       scopes = excluded.scopes, updated_at = now()`,
-    [randomToken(18), args.workspaceId, args.accountEmail, args.providerAccountId, encrypted, args.scopes],
-  );
+  await transaction(async (client) => {
+    const accountKey = `gmail-account:${args.accountEmail.trim().toLowerCase()}`;
+    await client.query("select pg_advisory_xact_lock(hashtextextended($1, 1))", [accountKey]);
+    const conflict = await client.query<{ workspace_id: string }>(
+      `select workspace_id from perpendicular_integrations
+       where provider = 'gmail' and lower(account_email) = lower($1)
+         and workspace_id <> $2 and status in ('connected', 'degraded')
+       limit 1`,
+      [args.accountEmail, args.workspaceId],
+    );
+    if (conflict.rows[0]) throw new Error("This Gmail account is already connected to another workspace.");
+    await client.query(
+      `insert into perpendicular_integrations
+        (id, workspace_id, provider, status, account_email, provider_account_id, encrypted_refresh_token, scopes, metadata, updated_at)
+       values ($1, $2, 'gmail', 'connected', $3, $4, $5, $6, '{}'::jsonb, now())
+       on conflict (workspace_id, provider) do update set
+         status = 'connected', account_email = excluded.account_email,
+         provider_account_id = excluded.provider_account_id,
+         encrypted_refresh_token = excluded.encrypted_refresh_token,
+         scopes = excluded.scopes, updated_at = now()`,
+      [randomToken(18), args.workspaceId, args.accountEmail, args.providerAccountId, encrypted, args.scopes],
+    );
+  });
   await recordIntegrationHealth(args.workspaceId, "gmail", "connected", "oauth_connected", "Gmail OAuth connection persisted.");
 }
 
@@ -229,10 +241,10 @@ export async function findWorkspaceByGmailAccount(accountEmail: string) {
   const result = await query<{ workspace_id: string }>(
     `select workspace_id from perpendicular_integrations
      where provider = 'gmail' and lower(account_email) = lower($1) and status in ('connected', 'degraded')
-     order by updated_at desc limit 1`,
+     order by updated_at desc limit 2`,
     [accountEmail],
   );
-  return result.rows[0]?.workspace_id || null;
+  return result.rows.length === 1 ? result.rows[0].workspace_id : null;
 }
 
 export async function claimWebhookEvent(args: { workspaceId: string; provider: string; providerEventId: string; eventType: string; payload: Record<string, unknown> }) {

@@ -96,6 +96,14 @@ test("unconfigured Gmail is represented honestly instead of opening a dead OAuth
   assert.match(console, /Gmail OAuth is not configured on the Dell/);
 });
 
+test("Gmail mailbox ownership cannot cross workspace boundaries", () => {
+  const store = readFileSync(join(root, "src/lib/integration-store.ts"), "utf8");
+  assert.match(store, /pg_advisory_xact_lock\(hashtextextended\(\$1, 1\)\)/);
+  assert.match(store, /workspace_id <> \$2/);
+  assert.match(store, /already connected to another workspace/);
+  assert.match(store, /result\.rows\.length === 1/);
+});
+
 test("pricing explicitly identifies the open-source launch", () => {
   const pricing = readFileSync(join(root, "src/app/api/pricing/route.ts"), "utf8");
   assert.match(pricing, /openSource: true/);
