@@ -5,7 +5,7 @@ This is the deployment note for the Blueblood in-house server. It does not modif
 ## Runtime shape
 
 - Perpendicular web container: one long-running Next.js process.
-- Postgres: reuse the shared Blueblood Postgres on the Docker network. The app creates only `perpendicular_workspace_state`.
+- Postgres: reuse the shared Blueblood Postgres on the Docker network. The app never mutates production schema; the dedicated database must be migrated before rollout.
 - Model runtime: Ollama on the Dell, reachable from the container through the configured `OLLAMA_BASE_URL`.
 - Public access: Caddy + the existing Cloudflare Tunnel. Do not open a router port.
 - Heartbeats: host cron calls `/api/cron/heartbeat` with `Authorization: Bearer $CRON_SECRET`; the endpoint scans all persisted workspaces and executes only due schedules.
