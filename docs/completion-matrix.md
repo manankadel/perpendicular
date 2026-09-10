@@ -25,6 +25,21 @@ This is the implementation truth for the supplied product and audit documents. A
 | Read-only production smoke gate | Live in code; current Dell image fails until the next release is promoted | `npm run smoke:production`, `scripts/production-smoke.mjs` |
 | CI verification before image publication | Live | `.github/workflows/perpendicular-image.yml` runs check and production audit before publish |
 
+## Dated launch-audit fixes
+
+The supplied launch-readiness PDF is a dated audit. Its F-01–F-08 items reconcile to the current source as follows:
+
+| Fix | Current status | Evidence |
+| --- | --- | --- |
+| F-01 credit seed drift | Closed in code; production empty-state behavior is tested | `createEmptyState`, production seed contract in `tests/domain.test.ts` |
+| F-02 stale navigation counts | Closed in code | `navCount()` in `src/components/PerpendicularConsole.tsx` |
+| F-03 heartbeat idempotency | Implemented; Dell verification pending | Postgres lease/idempotency path in `src/lib/job-store.ts`, heartbeat route and job tests |
+| F-04 API-key rate limits | Implemented with bounded per-process fallback; distributed Redis limiter remains a scale seam | `src/lib/rate-limit.ts`, API-key tests |
+| F-05 Gmail renewal and webhook dedupe | Implemented; provider E2E pending | `src/app/api/webhooks/gmail/route.ts`, `src/lib/integration-store.ts`, `db/003_gmail_events_health.sql` |
+| F-06 origin-check unification | Closed in code | `src/lib/cors.ts`, `src/lib/security.ts`, CORS tests |
+| F-07 local workspace discovery | Closed in code; production uses Postgres only | `listWorkspaceIds()` and production fallback guard in `src/lib/server-store.ts` |
+| F-08 collision-safe IDs | Closed in code | `crypto.randomUUID()` in `src/lib/domain.ts` |
+
 ## Explicitly not claimed
 
 These are present in the comparison/audit documents but are not silently faked in Perpendicular:
