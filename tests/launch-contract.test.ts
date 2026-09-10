@@ -44,6 +44,7 @@ test("REST surfaces enforce API-key scopes for reads and Gmail mutations", () =>
   const exportRoute = readFileSync(join(root, "src/app/api/workspace/export/route.ts"), "utf8");
   const gmailTest = readFileSync(join(root, "src/app/api/integrations/gmail/test/route.ts"), "utf8");
   const gmailDisconnect = readFileSync(join(root, "src/app/api/integrations/gmail/disconnect/route.ts"), "utf8");
+  assert.match(workspace, /const requiredPermission = "workspace:write"/);
   assert.match(workspace, /hasPermission\(identity\.context, "workspace:read"\)/);
   assert.match(integrations, /hasPermission\(identity\.context, "workspace:read"\)/);
   assert.match(usage, /hasPermission\(identity, "settings:read"\)/);
@@ -54,7 +55,7 @@ test("REST surfaces enforce API-key scopes for reads and Gmail mutations", () =>
 
 test("credit-consuming enrichment requires workspace write permission", () => {
   const workspace = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
-  assert.match(workspace, /const requiredPermission = action === "chat" \? "workspace:read" : "workspace:write"/);
+  assert.match(workspace, /const requiredPermission = "workspace:write"/);
   assert.match(workspace, /if \(action === "enrich-row"\)/);
 });
 
@@ -148,6 +149,7 @@ test("MCP mutations expose persisted state when audit or usage logging fails", (
   assert.match(mcp, /persisted: true/);
   assert.match(mcp, /mcp\.employee_chat/);
   assert.match(mcp, /mcp\.employee_run/);
+  assert.match(mcp, /name === "employee_chat"\)[\s\S]*hasPermission\(identity\.context, "workspace:write"\)/);
 });
 
 test("external side effects do not masquerade as failures when audit storage is down", () => {

@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       return respond({ jsonrpc: "2.0", id, result: result(await listIntegrationSummaries(identity.context.workspaceId)) });
     }
     if (name === "employee_chat") {
-      if (!hasPermission(identity.context, "workspace:read")) throw new Error("Permission denied.");
+      if (!hasPermission(identity.context, "workspace:write")) throw new Error("Permission denied.");
       const employeeId = String(args.employeeId || "");
       const message = String(args.message || "").trim();
       if (!message) throw new Error("Message is required.");

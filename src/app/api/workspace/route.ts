@@ -150,7 +150,7 @@ async function postWorkspace(request: Request): Promise<Response> {
 
   const action = body.action;
   if (!action) return json({ error: "Missing action." }, { status: 400 });
-  const requiredPermission = action === "chat" ? "workspace:read" : "workspace:write";
+  const requiredPermission = "workspace:write";
   if (!hasPermission(identity.context, requiredPermission)) return json({ error: "You do not have permission for this action." }, { status: 403 });
 
   try {
