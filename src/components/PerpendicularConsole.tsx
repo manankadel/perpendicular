@@ -41,6 +41,11 @@ type OpsSummary = { webhooks: WebhookEventSummary[]; deadLetterJobs: DeadLetterJ
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
 const apiPath = (path: string) => `${apiBase}${path}`;
 
+async function responseError(response: Response, fallback: string) {
+  const payload = await response.json().catch(() => null) as { error?: string } | null;
+  return payload?.error || fallback;
+}
+
 const navGroups: { label: string; items: { id: View; label: string; icon: LucideIcon }[] }[] = [
   {
     label: "Operate",
@@ -202,14 +207,20 @@ function KnowledgeView({ state, setShowDocument }: { state: WorkspaceState; setS
 
 function ListsView({ state, mutate: providedMutate, setShowList, setShowLead }: { state: WorkspaceState; mutate?: Mutation; setShowList: (show: boolean) => void; setShowLead: (show: boolean) => void; setShowDocument?: (show: boolean) => void }) {
   const list = state.lists[0];
+  const [actionError, setActionError] = useState<string | null>(null);
   const mutate: Mutation = providedMutate || (async (action, payload = {}) => {
-    const response = await fetch(apiPath("/api/workspace"), { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...payload }) });
-    if (!response.ok) throw new Error("Action failed. Refresh and try again.");
-    window.location.reload();
+    setActionError(null);
+    try {
+      const response = await fetch(apiPath("/api/workspace"), { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...payload }) });
+      if (!response.ok) throw new Error(await responseError(response, "Action failed. Refresh and try again."));
+      window.location.reload();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Action failed. Refresh and try again.");
+    }
   });
   const [filter, setFilter] = useState("");
   const filteredRows = list?.rows.filter((row) => `${row.name} ${row.company} ${row.role}`.toLowerCase().includes(filter.toLowerCase())) || [];
-  return <><PageHeading eyebrow="Rows that do work" title="Smart Lists are workflows." subtitle="Import people, research public company evidence, and enroll only qualified rows. Perpendicular never labels an email verified without a real verification provider."><button className="button-secondary" onClick={() => setShowList(true)}><Plus size={13} />Create list</button><button className="button-primary" disabled={!list} onClick={() => setShowLead(true)}><Plus size={13} />Add lead</button></PageHeading>{list ? <div className="panel"><PanelHeader title={list.name} caption={`${list.rows.length} rows · ${list.rows.filter((row) => row.status === "enriched").length} researched`}><div className="server-status"><span className="status-dot" />Public evidence only</div></PanelHeader><div className="list-toolbar"><div className="toolbar-search"><SearchIcon /><input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search rows…" aria-label="Search smart list rows" /></div><div className="credit-preview"><Database size={13} />Research estimate: <strong>{filteredRows.length * 2} Data Credits</strong></div></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Person</th><th>Role / location</th><th>ICP score</th><th>Signal</th><th>Sequence</th><th>Actions</th></tr></thead><tbody>{filteredRows.map((row) => <SmartRowItem key={row.id} row={row} list={list} state={state} mutate={mutate} />)}</tbody></table>{!filteredRows.length ? <div className="empty-state">Add a lead to start this list.</div> : null}</div></div> : <div className="empty-state">Create a list, then add a lead or import one through the API.</div>}</>;
+  return <><PageHeading eyebrow="Rows that do work" title="Smart Lists are workflows." subtitle="Import people, research public company evidence, and enroll only qualified rows. Perpendicular never labels an email verified without a real verification provider."><button className="button-secondary" onClick={() => setShowList(true)}><Plus size={13} />Create list</button><button className="button-primary" disabled={!list} onClick={() => setShowLead(true)}><Plus size={13} />Add lead</button></PageHeading>{actionError ? <div className="notice" role="alert">{actionError}</div> : null}{list ? <div className="panel"><PanelHeader title={list.name} caption={`${list.rows.length} rows · ${list.rows.filter((row) => row.status === "enriched").length} researched`}><div className="server-status"><span className="status-dot" />Public evidence only</div></PanelHeader><div className="list-toolbar"><div className="toolbar-search"><SearchIcon /><input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search rows…" aria-label="Search smart list rows" /></div><div className="credit-preview"><Database size={13} />Research estimate: <strong>{filteredRows.length * 2} Data Credits</strong></div></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Person</th><th>Role / location</th><th>ICP score</th><th>Signal</th><th>Sequence</th><th>Actions</th></tr></thead><tbody>{filteredRows.map((row) => <SmartRowItem key={row.id} row={row} list={list} state={state} mutate={mutate} />)}</tbody></table>{!filteredRows.length ? <div className="empty-state">Add a lead to start this list.</div> : null}</div></div> : <div className="empty-state">Create a list, then add a lead or import one through the API.</div>}</>;
 }
 
 function SearchIcon() { return <span className="search-icon"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="m13 13 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg></span>; }
@@ -295,53 +306,95 @@ function SettingsView({ state, usage }: { state: WorkspaceState; usage: UsageSum
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [ops, setOps] = useState<OpsSummary | null>(null);
   const [opsBusy, setOpsBusy] = useState<string | null>(null);
+  const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   useEffect(() => {
     fetch(apiPath("/api/ops"), { credentials: "include" })
-      .then(async (response) => response.ok ? setOps(await response.json() as OpsSummary) : undefined)
-      .catch(() => undefined);
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await responseError(response, "Operations data could not be loaded."));
+        setOps(await response.json() as OpsSummary);
+      })
+      .catch((error: unknown) => setSettingsMessage(error instanceof Error ? error.message : "Operations data could not be loaded."));
   }, []);
   const disconnectGmail = async () => {
+    setSettingsMessage(null);
     setGmailBusy(true);
-    await fetch(apiPath("/api/integrations/gmail/disconnect"), { method: "POST", credentials: "include" });
-    window.location.reload();
+    try {
+      const response = await fetch(apiPath("/api/integrations/gmail/disconnect"), { method: "POST", credentials: "include" });
+      if (!response.ok) throw new Error(await responseError(response, "Gmail could not be disconnected."));
+      window.location.reload();
+    } catch (error) {
+      setGmailBusy(false);
+      setSettingsMessage(error instanceof Error ? error.message : "Gmail could not be disconnected.");
+    }
   };
   const syncGmail = async () => {
+    setSettingsMessage(null);
     setGmailBusy(true);
-    const response = await fetch(apiPath("/api/integrations/gmail/sync"), { method: "POST", credentials: "include" });
-    setGmailBusy(false);
-    if (response.ok) window.location.reload();
+    try {
+      const response = await fetch(apiPath("/api/integrations/gmail/sync"), { method: "POST", credentials: "include" });
+      if (!response.ok) throw new Error(await responseError(response, "Gmail inbox sync failed."));
+      window.location.reload();
+    } catch (error) {
+      setGmailBusy(false);
+      setSettingsMessage(error instanceof Error ? error.message : "Gmail inbox sync failed.");
+    }
   };
   const renewGmailWatch = async () => {
+    setSettingsMessage(null);
     setGmailBusy(true);
-    const response = await fetch(apiPath("/api/integrations/gmail/watch"), { method: "POST", credentials: "include" });
-    setGmailBusy(false);
-    if (response.ok) window.location.reload();
+    try {
+      const response = await fetch(apiPath("/api/integrations/gmail/watch"), { method: "POST", credentials: "include" });
+      if (!response.ok) throw new Error(await responseError(response, "Gmail watch renewal failed."));
+      window.location.reload();
+    } catch (error) {
+      setGmailBusy(false);
+      setSettingsMessage(error instanceof Error ? error.message : "Gmail watch renewal failed.");
+    }
   };
   const sendTest = async () => {
     if (!testRecipient || !window.confirm(`Send a real test email to ${testRecipient}?`)) return;
+    setSettingsMessage(null);
     setGmailBusy(true);
-    await fetch(apiPath("/api/integrations/gmail/test"), { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ to: testRecipient }) });
-    setGmailBusy(false);
+    try {
+      const response = await fetch(apiPath("/api/integrations/gmail/test"), { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ to: testRecipient }) });
+      if (!response.ok) throw new Error(await responseError(response, "The test email could not be sent."));
+      setSettingsMessage(`Test email sent to ${testRecipient}.`);
+    } catch (error) {
+      setSettingsMessage(error instanceof Error ? error.message : "The test email could not be sent.");
+    } finally {
+      setGmailBusy(false);
+    }
   };
   const deleteWorkspace = async () => {
     if (!window.confirm(`This permanently deletes all data for ${state.workspace.id}. Continue?`)) return;
     const confirmation = window.prompt(`Type ${state.workspace.id} to permanently delete this workspace.`);
     if (confirmation !== state.workspace.id) return;
     setDeleteBusy(true);
-    const response = await fetch(apiPath("/api/workspace/privacy"), { method: "DELETE", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ confirmation }) });
-    setDeleteBusy(false);
-    if (response.ok) window.location.reload();
-  };
-  const operate = async (action: "replay-webhook" | "retry-job", id: string) => {
-    setOpsBusy(`${action}:${id}`);
-    const response = await fetch(apiPath("/api/ops"), { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, id }) });
-    setOpsBusy(null);
-    if (response.ok) {
-      const refreshed = await fetch(apiPath("/api/ops"), { credentials: "include" });
-      if (refreshed.ok) setOps(await refreshed.json() as OpsSummary);
+    try {
+      const response = await fetch(apiPath("/api/workspace/privacy"), { method: "DELETE", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ confirmation }) });
+      if (!response.ok) throw new Error(await responseError(response, "Workspace data could not be deleted."));
+      window.location.reload();
+    } catch (error) {
+      setDeleteBusy(false);
+      setSettingsMessage(error instanceof Error ? error.message : "Workspace data could not be deleted.");
     }
   };
-  return <><PageHeading eyebrow="Operator controls" title="Open by default." subtitle="No paid model API is required to run this workspace. The runtime is designed for the Dell, with Postgres persistence and Ollama as the local worker."><span className="status-pill live"><span className="status-dot" />{state.workspace.plan}</span></PageHeading><div className="settings-grid"><section className="panel"><PanelHeader title="Workspace contract" caption={`Company boundary: ${state.workspace.id}`} /><div><div className="setting-row"><div><div className="setting-name">Runtime region</div><div className="setting-description">Where the app and data are expected to live.</div></div><div className="setting-value">{state.workspace.region}</div></div><div className="setting-row"><div><div className="setting-name">Worker model</div><div className="setting-description">Swap with any Ollama-compatible open model.</div></div><div className="setting-value">{state.workspace.model}</div></div><div className="setting-row"><div><div className="setting-name">AI credits</div><div className="setting-description">Local worker budget for chat and scheduled actions.</div></div><div className="setting-value">{state.workspace.aiCredits.remaining} / {state.workspace.aiCredits.limit}</div></div><div className="setting-row"><div><div className="setting-name">Data credits</div><div className="setting-description">Local budget for public company research.</div></div><div className="setting-value">{state.workspace.dataCredits.remaining}</div></div></div></section><section className="panel"><PanelHeader title="Usage ledger" caption="Persisted credit burn for the last 30 days." /><div className="setting-row"><div><div className="setting-name">AI usage</div><div className="setting-description">Chat, runs, evaluations, and heartbeat work.</div></div><div className="setting-value">{usage ? usage.aiUnits : "Unavailable"}</div></div><div className="setting-row"><div><div className="setting-name">Data usage</div><div className="setting-description">Public research actions only.</div></div><div className="setting-value">{usage ? usage.dataUnits : "Unavailable"}</div></div>{usage?.byFeature.length ? <div className="health-log">{usage.byFeature.slice(0, 8).map((entry) => <div className="list-meta" key={entry.feature}>{entry.feature} · {entry.units} units</div>)}</div> : <div className="list-meta">Usage appears after db/004_usage_ledger.sql is applied and a real action runs.</div>}</section><section className="panel"><PanelHeader title="Operations" caption="Workspace-scoped webhooks and dead-letter work." /><div className="setting-row"><div><div className="setting-name">Webhook events</div><div className="setting-description">Provider events are persisted before processing and can be replayed after a failure.</div></div><div className="setting-value">{ops?.webhooks.length ?? "—"}</div></div>{ops?.webhooks.slice(0, 5).map((event) => <div className="setting-row" key={event.id}><div><div className="setting-name">{event.provider} · {event.eventType}</div><div className="setting-description">{event.error || `${event.status} · ${relativeTime(event.createdAt)}`}</div></div><div className="row-actions">{event.status === "failed" || event.status === "processed" ? <button className="small-button" disabled={opsBusy === `replay-webhook:${event.id}`} onClick={() => void operate("replay-webhook", event.id)}>{opsBusy === `replay-webhook:${event.id}` ? "Replaying…" : "Replay"}</button> : <span className="small-button">{event.status}</span>}</div></div>)}<div className="setting-row"><div><div className="setting-name">Dead-letter jobs</div><div className="setting-description">Failed heartbeat jobs can be requeued without editing the database.</div></div><div className="setting-value">{ops?.deadLetterJobs.length ?? "—"}</div></div>{ops?.deadLetterJobs.slice(0, 5).map((job) => <div className="setting-row" key={job.id}><div><div className="setting-name">{job.kind}</div><div className="setting-description">{job.lastError || `${job.attempts}/${job.maxAttempts} attempts`}</div></div><button className="small-button" disabled={opsBusy === `retry-job:${job.id}`} onClick={() => void operate("retry-job", job.id)}>{opsBusy === `retry-job:${job.id}` ? "Retrying…" : "Retry"}</button></div>)}{!ops ? <div className="list-meta">Operations data is unavailable until the platform migrations are applied.</div> : null}</section><section className="panel"><PanelHeader title="Connections" caption="Credentials are kept on the Dell and never returned to the browser." /><div className="setting-row"><div><div className="setting-name"><Mail size={14} /> Gmail</div><div className="setting-description">OAuth mailbox for explicit tests, inbox sync, and approved sequence sends.</div>{gmail?.accountEmail ? <div className="list-meta">{gmail.accountEmail} · {gmail.lastSyncAt ? `synced ${relativeTime(gmail.lastSyncAt)}` : "not synced yet"}</div> : null}</div>{gmail?.status === "connected" ? <div className="row-actions"><button className="small-button" disabled={gmailBusy} onClick={() => void syncGmail()}>Sync inbox</button><button className="small-button" disabled={gmailBusy} onClick={() => void renewGmailWatch()}>Renew watch</button><button className="small-button" disabled={gmailBusy} onClick={() => void disconnectGmail()}>Disconnect</button></div> : <a className="button-secondary" href={apiPath("/api/integrations/google/start")}><Mail size={13} />Connect Gmail</a>}</div>{gmail?.status === "connected" ? <div className="form-actions"><input type="email" value={testRecipient} onChange={(event) => setTestRecipient(event.target.value)} placeholder="your test address" aria-label="Test email recipient" /><button className="button-secondary" disabled={gmailBusy || !testRecipient} onClick={() => void sendTest()}>Send test email</button></div> : null}{gmail?.health?.length ? <div className="health-log">{gmail.health.slice(0, 5).map((event) => <div className="list-meta" key={`${event.createdAt}-${event.eventType}`}>{event.status} · {event.eventType} · {event.detail} · {relativeTime(event.createdAt)}</div>)}</div> : null}<div className="setting-row"><div><div className="setting-name">API documentation</div><div className="setting-description">OpenAPI JSON for workspace commands, Gmail, and scoped API keys.</div></div><a className="small-button" href={apiPath("/api/docs")} target="_blank" rel="noreferrer">Open docs <ArrowUpRight size={11} /></a></div><div className="setting-row"><div><div className="setting-name">Portable data</div><div className="setting-description">Export the workspace JSON or permanently delete it with an explicit owner confirmation.</div></div><div className="row-actions"><a className="small-button" href={apiPath("/api/workspace/export")}>Export</a><button className="small-button" disabled={deleteBusy} onClick={() => void deleteWorkspace()}>{deleteBusy ? "Deleting…" : "Delete data"}</button></div></div></section><section className="panel"><PanelHeader title="Self-hosting status" caption="The boring stuff is the moat." /><div><div className="setting-row"><div><div className="setting-name">Storage adapter</div><div className="setting-description">Dell Postgres is required in production; the JSON fallback is local development only.</div></div><div className="code-value">{state.workspace.region.includes("Dell") ? "Postgres" : "local"}</div></div><div className="setting-row"><div><div className="setting-name">Model runtime</div><div className="setting-description">Production runs fail clearly when Ollama is unavailable.</div></div><div className="code-value">{state.workspace.model.includes("not configured") ? "blocked" : "Ollama"}</div></div><div className="setting-row"><div><div className="setting-name">Source code</div><div className="setting-description">Deploy the same container to the Dell or any Linux host.</div></div><div className="code-value">open</div></div></div></section></div></>;
+  const operate = async (action: "replay-webhook" | "retry-job", id: string) => {
+    setSettingsMessage(null);
+    setOpsBusy(`${action}:${id}`);
+    try {
+      const response = await fetch(apiPath("/api/ops"), { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, id }) });
+      if (!response.ok) throw new Error(await responseError(response, "The operations action failed."));
+      const refreshed = await fetch(apiPath("/api/ops"), { credentials: "include" });
+      if (!refreshed.ok) throw new Error(await responseError(refreshed, "Operations data could not be refreshed."));
+      setOps(await refreshed.json() as OpsSummary);
+    } catch (error) {
+      setSettingsMessage(error instanceof Error ? error.message : "The operations action failed.");
+    } finally {
+      setOpsBusy(null);
+    }
+  };
+  return <><PageHeading eyebrow="Operator controls" title="Open by default." subtitle="No paid model API is required to run this workspace. The runtime is designed for the Dell, with Postgres persistence and Ollama as the local worker."><span className="status-pill live"><span className="status-dot" />{state.workspace.plan}</span></PageHeading>{settingsMessage ? <div className="notice" role="alert">{settingsMessage}</div> : null}<div className="settings-grid"><section className="panel"><PanelHeader title="Workspace contract" caption={`Company boundary: ${state.workspace.id}`} /><div><div className="setting-row"><div><div className="setting-name">Runtime region</div><div className="setting-description">Where the app and data are expected to live.</div></div><div className="setting-value">{state.workspace.region}</div></div><div className="setting-row"><div><div className="setting-name">Worker model</div><div className="setting-description">Swap with any Ollama-compatible open model.</div></div><div className="setting-value">{state.workspace.model}</div></div><div className="setting-row"><div><div className="setting-name">AI credits</div><div className="setting-description">Local worker budget for chat and scheduled actions.</div></div><div className="setting-value">{state.workspace.aiCredits.remaining} / {state.workspace.aiCredits.limit}</div></div><div className="setting-row"><div><div className="setting-name">Data credits</div><div className="setting-description">Local budget for public company research.</div></div><div className="setting-value">{state.workspace.dataCredits.remaining}</div></div></div></section><section className="panel"><PanelHeader title="Usage ledger" caption="Persisted credit burn for the last 30 days." /><div className="setting-row"><div><div className="setting-name">AI usage</div><div className="setting-description">Chat, runs, evaluations, and heartbeat work.</div></div><div className="setting-value">{usage ? usage.aiUnits : "Unavailable"}</div></div><div className="setting-row"><div><div className="setting-name">Data usage</div><div className="setting-description">Public research actions only.</div></div><div className="setting-value">{usage ? usage.dataUnits : "Unavailable"}</div></div>{usage?.byFeature.length ? <div className="health-log">{usage.byFeature.slice(0, 8).map((entry) => <div className="list-meta" key={entry.feature}>{entry.feature} · {entry.units} units</div>)}</div> : <div className="list-meta">Usage appears after db/004_usage_ledger.sql is applied and a real action runs.</div>}</section><section className="panel"><PanelHeader title="Operations" caption="Workspace-scoped webhooks and dead-letter work." /><div className="setting-row"><div><div className="setting-name">Webhook events</div><div className="setting-description">Provider events are persisted before processing and can be replayed after a failure.</div></div><div className="setting-value">{ops?.webhooks.length ?? "—"}</div></div>{ops?.webhooks.slice(0, 5).map((event) => <div className="setting-row" key={event.id}><div><div className="setting-name">{event.provider} · {event.eventType}</div><div className="setting-description">{event.error || `${event.status} · ${relativeTime(event.createdAt)}`}</div></div><div className="row-actions">{event.status === "failed" || event.status === "processed" ? <button className="small-button" disabled={opsBusy === `replay-webhook:${event.id}`} onClick={() => void operate("replay-webhook", event.id)}>{opsBusy === `replay-webhook:${event.id}` ? "Replaying…" : "Replay"}</button> : <span className="small-button">{event.status}</span>}</div></div>)}<div className="setting-row"><div><div className="setting-name">Dead-letter jobs</div><div className="setting-description">Failed heartbeat jobs can be requeued without editing the database.</div></div><div className="setting-value">{ops?.deadLetterJobs.length ?? "—"}</div></div>{ops?.deadLetterJobs.slice(0, 5).map((job) => <div className="setting-row" key={job.id}><div><div className="setting-name">{job.kind}</div><div className="setting-description">{job.lastError || `${job.attempts}/${job.maxAttempts} attempts`}</div></div><button className="small-button" disabled={opsBusy === `retry-job:${job.id}`} onClick={() => void operate("retry-job", job.id)}>{opsBusy === `retry-job:${job.id}` ? "Retrying…" : "Retry"}</button></div>)}{!ops ? <div className="list-meta">Operations data is unavailable until the platform migrations are applied.</div> : null}</section><section className="panel"><PanelHeader title="Connections" caption="Credentials are kept on the Dell and never returned to the browser." /><div className="setting-row"><div><div className="setting-name"><Mail size={14} /> Gmail</div><div className="setting-description">OAuth mailbox for explicit tests, inbox sync, and approved sequence sends.</div>{gmail?.accountEmail ? <div className="list-meta">{gmail.accountEmail} · {gmail.lastSyncAt ? `synced ${relativeTime(gmail.lastSyncAt)}` : "not synced yet"}</div> : null}</div>{gmail?.status === "connected" ? <div className="row-actions"><button className="small-button" disabled={gmailBusy} onClick={() => void syncGmail()}>Sync inbox</button><button className="small-button" disabled={gmailBusy} onClick={() => void renewGmailWatch()}>Renew watch</button><button className="small-button" disabled={gmailBusy} onClick={() => void disconnectGmail()}>Disconnect</button></div> : <a className="button-secondary" href={apiPath("/api/integrations/google/start")}><Mail size={13} />Connect Gmail</a>}</div>{gmail?.status === "connected" ? <div className="form-actions"><input type="email" value={testRecipient} onChange={(event) => setTestRecipient(event.target.value)} placeholder="your test address" aria-label="Test email recipient" /><button className="button-secondary" disabled={gmailBusy || !testRecipient} onClick={() => void sendTest()}>Send test email</button></div> : null}{gmail?.health?.length ? <div className="health-log">{gmail.health.slice(0, 5).map((event) => <div className="list-meta" key={`${event.createdAt}-${event.eventType}`}>{event.status} · {event.eventType} · {event.detail} · {relativeTime(event.createdAt)}</div>)}</div> : null}<div className="setting-row"><div><div className="setting-name">API documentation</div><div className="setting-description">OpenAPI JSON for workspace commands, Gmail, and scoped API keys.</div></div><a className="small-button" href={apiPath("/api/docs")} target="_blank" rel="noreferrer">Open docs <ArrowUpRight size={11} /></a></div><div className="setting-row"><div><div className="setting-name">Portable data</div><div className="setting-description">Export the workspace JSON or permanently delete it with an explicit owner confirmation.</div></div><div className="row-actions"><a className="small-button" href={apiPath("/api/workspace/export")}>Export</a><button className="small-button" disabled={deleteBusy} onClick={() => void deleteWorkspace()}>{deleteBusy ? "Deleting…" : "Delete data"}</button></div></div></section><section className="panel"><PanelHeader title="Self-hosting status" caption="The boring stuff is the moat." /><div><div className="setting-row"><div><div className="setting-name">Storage adapter</div><div className="setting-description">Dell Postgres is required in production; the JSON fallback is local development only.</div></div><div className="code-value">{state.workspace.region.includes("Dell") ? "Postgres" : "local"}</div></div><div className="setting-row"><div><div className="setting-name">Model runtime</div><div className="setting-description">Production runs fail clearly when Ollama is unavailable.</div></div><div className="code-value">{state.workspace.model.includes("not configured") ? "blocked" : "Ollama"}</div></div><div className="setting-row"><div><div className="setting-name">Source code</div><div className="setting-description">Deploy the same container to the Dell or any Linux host.</div></div><div className="code-value">open</div></div></div></section></div></>;
 }
 
 function Modal({ title, description, onClose, children }: { title: string; description: string; onClose: () => void; children: React.ReactNode }) {
