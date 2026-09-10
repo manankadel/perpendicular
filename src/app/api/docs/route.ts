@@ -21,7 +21,7 @@ const document = {
     },
   },
   paths: {
-    "/api/health": { get: { security: [], responses: { "200": { description: "Service and database health." } } } },
+    "/api/health": { get: { security: [], responses: { "200": { description: "Service, database, dead-letter, webhook, and degraded-integration health." }, "503": { description: "Production database is unavailable." } } } },
     "/api/auth/login": { post: { security: [], description: "Authenticate through the product-owned sign-in form. The server validates the credentials with Blueblood ID and forwards HttpOnly session cookies; identity tokens are never returned to browser JavaScript.", responses: { "200": { description: "Signed in or an MFA challenge was issued." }, "401": { description: "Credentials are invalid." } } } },
     "/api/auth/mfa": { post: { security: [], description: "Complete the MFA challenge created by the product-owned sign-in form.", responses: { "200": { description: "Signed in and session cookies issued." }, "401": { description: "The challenge or code is invalid." } } } },
     "/api/auth/logout": { post: { security: [], description: "Clear the Perpendicular and Blueblood ID session cookies for the Blueblood Studio domain.", responses: { "200": { description: "Session cleared." } } } },
