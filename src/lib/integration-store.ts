@@ -21,6 +21,17 @@ export type IntegrationHealthEvent = {
   createdAt: string;
 };
 
+export type WebhookEventSummary = {
+  id: string;
+  provider: string;
+  providerEventId: string;
+  eventType: string;
+  status: "received" | "processed" | "failed";
+  error: string | null;
+  createdAt: string;
+  processedAt: string | null;
+};
+
 type OAuthState = {
   workspaceId: string;
   userId: string;
@@ -257,6 +268,51 @@ export async function completeWebhookEvent(id: string, status: "processed" | "fa
      where id = $1`,
     [id, status, error ? error.slice(0, 2000) : null],
   );
+}
+
+export async function listWebhookEvents(workspaceId: string, limit = 30): Promise<WebhookEventSummary[]> {
+  const result = await query<{
+    id: string;
+    provider: string;
+    provider_event_id: string;
+    event_type: string;
+    status: "received" | "processed" | "failed";
+    error: string | null;
+    created_at: Date;
+    processed_at: Date | null;
+  }>(
+    `select id, provider, provider_event_id, event_type, status, error, created_at, processed_at
+     from perpendicular_webhook_events
+     where workspace_id = $1
+     order by created_at desc limit $2`,
+    [workspaceId, Math.min(Math.max(limit, 1), 100)],
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    provider: row.provider,
+    providerEventId: row.provider_event_id,
+    eventType: row.event_type,
+    status: row.status,
+    error: row.error,
+    createdAt: row.created_at.toISOString(),
+    processedAt: row.processed_at?.toISOString() || null,
+  }));
+}
+
+export async function claimWebhookReplay(workspaceId: string, id: string) {
+  const result = await query<{
+    id: string;
+    provider: string;
+    event_type: string;
+    payload: Record<string, unknown>;
+  }>(
+    `update perpendicular_webhook_events
+     set status = 'received', error = null, processed_at = null
+     where id = $1 and workspace_id = $2 and status in ('failed', 'processed')
+     returning id, provider, event_type, payload`,
+    [id, workspaceId],
+  );
+  return result.rows[0] || null;
 }
 
 export async function recordAuditEvent(args: {

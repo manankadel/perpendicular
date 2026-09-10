@@ -25,3 +25,11 @@ test("workspace deletion requires owner confirmation in the route contract", () 
   assert.match(route, /body\.confirmation !== identity\.workspaceId/);
   assert.match(route, /perpendicular_workspace_state/);
 });
+
+test("operator controls expose webhook and dead-letter replay paths", () => {
+  const route = readFileSync(join(root, "src/app/api/ops/route.ts"), "utf8");
+  assert.match(route, /replay-webhook/);
+  assert.match(route, /retry-job/);
+  assert.match(route, /listWebhookEvents/);
+  assert.match(route, /listDeadLetterJobs/);
+});

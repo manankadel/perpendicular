@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { databaseConfigured, transaction } from "@/lib/database";
+import { databaseConfigured, query, transaction } from "@/lib/database";
 
 const leaseMs = 10 * 60_000;
 const memoryJobs = new Map<string, {
@@ -12,6 +12,16 @@ const memoryJobs = new Map<string, {
 }>();
 
 export type JobClaim = { id: string; attempts: number; idempotencyKey: string };
+
+export type DeadLetterJob = {
+  id: string;
+  kind: string;
+  attempts: number;
+  maxAttempts: number;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 type JobInput = {
   workspaceId: string;
@@ -123,6 +133,44 @@ export async function failJob(claim: JobClaim, error: unknown) {
       [claim.id, message.slice(0, 2000)],
     );
   });
+}
+
+export async function listDeadLetterJobs(workspaceId: string, limit = 30): Promise<DeadLetterJob[]> {
+  const result = await query<{
+    id: string;
+    kind: string;
+    attempts: number;
+    max_attempts: number;
+    last_error: string | null;
+    created_at: Date;
+    updated_at: Date;
+  }>(
+    `select id, kind, attempts, max_attempts, last_error, created_at, updated_at
+     from perpendicular_jobs
+     where workspace_id = $1 and status = 'dead_letter'
+     order by updated_at desc limit $2`,
+    [workspaceId, Math.min(Math.max(limit, 1), 100)],
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    attempts: row.attempts,
+    maxAttempts: row.max_attempts,
+    lastError: row.last_error,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  }));
+}
+
+export async function retryDeadLetterJob(workspaceId: string, id: string) {
+  const result = await query<{ id: string }>(
+    `update perpendicular_jobs
+     set status = 'failed', attempts = 0, run_at = now(), last_error = null, locked_at = null, locked_by = null, updated_at = now()
+     where id = $1 and workspace_id = $2 and status = 'dead_letter'
+     returning id`,
+    [id, workspaceId],
+  );
+  return Boolean(result.rows[0]);
 }
 
 export function resetJobStoreForTests() {
