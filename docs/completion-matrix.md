@@ -22,6 +22,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Workspace JSON/CSV export and owner-confirmed deletion | Implemented; destructive E2E pending | `/api/workspace/export`, `/api/workspace/privacy` |
 | Webhook catalog and dead-letter replay controls | Implemented; provider E2E pending | `/api/ops`, Settings → Operations |
 | Operational health counts for dead letters, failed webhooks, and degraded integrations | Live in code; deployed verification pending | `/api/health` |
+| Read-only production smoke gate | Live in code; current Dell image fails until the next release is promoted | `npm run smoke:production`, `scripts/production-smoke.mjs` |
 | CI verification before image publication | Live | `.github/workflows/perpendicular-image.yml` runs check and production audit before publish |
 
 ## Explicitly not claimed
