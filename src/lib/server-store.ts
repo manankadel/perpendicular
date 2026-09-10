@@ -15,6 +15,7 @@ const transientStates = new Map<string, WorkspaceState>();
 async function getPool() {
   const database = await getDatabase();
   if (database) {
+    if (process.env.NODE_ENV === "production") return database;
     try {
       await database.query(`
       create table if not exists perpendicular_workspace_state (
