@@ -24,6 +24,23 @@ test("development seed follows the configured credit budgets", () => {
   else process.env.INITIAL_DATA_CREDITS = previousData;
 });
 
+test("production workspaces start empty instead of receiving demo records", () => {
+  const environment = process.env as Record<string, string | undefined>;
+  const previousNodeEnv = environment.NODE_ENV;
+  environment.NODE_ENV = "production";
+  try {
+    const state = createInitialState("production-workspace");
+    assert.equal(state.workspace.onboarding.status, "not_started");
+    assert.equal(state.employees.length, 0);
+    assert.equal(state.documents.length, 0);
+    assert.equal(state.runs.length, 0);
+    assert.equal(state.lists.length, 0);
+  } finally {
+    if (previousNodeEnv === undefined) delete environment.NODE_ENV;
+    else environment.NODE_ENV = previousNodeEnv;
+  }
+});
+
 test("retrieval returns scoped documents that share query terms", () => {
   const state = createInitialState();
   const matches = findRelevantDocuments(state.documents, "deliverability follow-through suppression");
