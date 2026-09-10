@@ -15,7 +15,7 @@ import {
 import { generateEmployeeReply } from "@/lib/llm";
 import { getWorkspace, updateWorkspace } from "@/lib/server-store";
 import { authenticateRequest, getLoginUrl, IdentityError, type IdentityContext } from "@/lib/identity";
-import { hasPermission, rejectCrossOrigin } from "@/lib/route-auth";
+import { hasPermission, rateLimitHeaders, rejectCrossOrigin } from "@/lib/route-auth";
 import { listIntegrationSummaries, recordAuditEvent } from "@/lib/integration-store";
 import { researchPersonCompany, researchWebsite } from "@/lib/public-research";
 import { corsHeadersFor } from "@/lib/cors";
@@ -124,7 +124,7 @@ async function getWorkspaceRoute(request: Request) {
       ...state,
       integrations,
       viewer: { email: identity.context.email, firstName: identity.context.firstName, lastName: identity.context.lastName },
-    });
+    }, { headers: rateLimitHeaders(identity.context) });
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : "Workspace storage is unavailable." }, { status: 503 });
   }
@@ -263,7 +263,7 @@ async function postWorkspace(request: Request): Promise<Response> {
       });
       try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.chat", resourceType: "employee", resourceId: employeeId }); } catch (error) { if (process.env.NODE_ENV === "production") return json({ error: error instanceof Error ? error.message : "Audit storage is unavailable." }, { status: 503 }); }
       await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "employee_chat", unit: "ai", units: 1, provider: result.provider });
-      return json({ state: next, provider: result.provider });
+      return json({ state: next, provider: result.provider }, { headers: rateLimitHeaders(identity.context) });
     }
 
     const updated = await updateWorkspace(companyId, async (state) => {
@@ -496,7 +496,7 @@ async function postWorkspace(request: Request): Promise<Response> {
     if (action === "enrich-row") {
       await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "public_research", unit: "data", units: 2 });
     }
-    return json(updated);
+    return json(updated, { headers: rateLimitHeaders(identity.context) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Action failed.";
     return json({ error: message }, { status: 400 });

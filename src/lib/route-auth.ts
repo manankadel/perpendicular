@@ -29,7 +29,7 @@ export function hasPermission(context: IdentityContext, permission: string) {
   return context.role === "owner" || context.role === "super_admin" || context.permissions.includes("*") || context.permissions.includes(permission);
 }
 
-export function rateLimitHeaders(context: IdentityContext) {
+export function rateLimitHeaders(context: IdentityContext): Record<string, string> {
   if (!context.rateLimit) return {};
   return {
     "x-rate-limit-limit": String(context.rateLimit.limit),

@@ -2,7 +2,7 @@ import { corsHeadersFor, corsJson } from "@/lib/cors";
 import { addActivity, createId, scoreRun, timestamp, type WorkspaceState } from "@/lib/domain";
 import { listIntegrationSummaries, recordAuditEvent } from "@/lib/integration-store";
 import { generateEmployeeReply } from "@/lib/llm";
-import { hasPermission, identityOrResponse, rejectCrossOrigin } from "@/lib/route-auth";
+import { hasPermission, identityOrResponse, rateLimitHeaders, rejectCrossOrigin } from "@/lib/route-auth";
 import { getWorkspace, updateWorkspace } from "@/lib/server-store";
 import { recordUsage } from "@/lib/usage";
 
@@ -31,23 +31,28 @@ export async function POST(request: Request) {
   if (originError) return originError;
   const identity = await identityOrResponse(request);
   if ("response" in identity) return identity.response;
+  const respond = (body: unknown, init?: ResponseInit) => {
+    const headers = new Headers(init?.headers);
+    for (const [name, value] of Object.entries(rateLimitHeaders(identity.context))) headers.set(name, value);
+    return corsJson(body, { ...init, headers }, request);
+  };
   let body: { jsonrpc?: string; id?: string | number; method?: string; params?: { name?: string; arguments?: Record<string, unknown> } };
   try { body = await request.json() as typeof body; } catch { return corsJson({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Invalid JSON." } }, { status: 400 }, request); }
   const id = body.id ?? null;
   try {
-    if (body.method === "initialize") return corsJson({ jsonrpc: "2.0", id, result: { protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "perpendicular", version: "1.0.0" } } }, undefined, request);
+    if (body.method === "initialize") return respond({ jsonrpc: "2.0", id, result: { protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "perpendicular", version: "1.0.0" } } });
     if (body.method === "notifications/initialized") return new Response(null, { status: 202, headers: corsHeadersFor(request) });
-    if (body.method === "tools/list") return corsJson({ jsonrpc: "2.0", id, result: { tools } }, undefined, request);
+    if (body.method === "tools/list") return respond({ jsonrpc: "2.0", id, result: { tools } });
     if (body.method !== "tools/call") throw new Error("Unsupported MCP method.");
     const name = body.params?.name;
     const args = body.params?.arguments || {};
     if (name === "workspace_get") {
       if (!hasPermission(identity.context, "workspace:read")) throw new Error("Permission denied.");
-      return corsJson({ jsonrpc: "2.0", id, result: result(await getWorkspace(identity.context.workspaceId)) }, undefined, request);
+      return respond({ jsonrpc: "2.0", id, result: result(await getWorkspace(identity.context.workspaceId)) });
     }
     if (name === "integrations_list") {
       if (!hasPermission(identity.context, "workspace:read")) throw new Error("Permission denied.");
-      return corsJson({ jsonrpc: "2.0", id, result: result(await listIntegrationSummaries(identity.context.workspaceId)) }, undefined, request);
+      return respond({ jsonrpc: "2.0", id, result: result(await listIntegrationSummaries(identity.context.workspaceId)) });
     }
     if (name === "employee_chat") {
       if (!hasPermission(identity.context, "workspace:read")) throw new Error("Permission denied.");
@@ -68,7 +73,7 @@ export async function POST(request: Request) {
       });
       await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.employee_chat", resourceType: "employee", resourceId: employeeId });
       await recordUsage({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, feature: "employee_chat", unit: "ai", units: 1, provider: generated.provider });
-      return corsJson({ jsonrpc: "2.0", id, result: result({ content: generated.content, citations: generated.citations, provider: generated.provider, state }) }, undefined, request);
+      return respond({ jsonrpc: "2.0", id, result: result({ content: generated.content, citations: generated.citations, provider: generated.provider, state }) });
     }
     if (name === "employee_run") {
       if (!hasPermission(identity.context, "workspace:write")) throw new Error("Permission denied.");
@@ -88,7 +93,7 @@ export async function POST(request: Request) {
       });
       await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.employee_run", resourceType: "employee", resourceId: employeeId });
       await recordUsage({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, feature: "employee_run", unit: "ai", units: 2, provider: generated.provider });
-      return corsJson({ jsonrpc: "2.0", id, result: result({ output: generated.content, provider: generated.provider, state }) }, undefined, request);
+      return respond({ jsonrpc: "2.0", id, result: result({ output: generated.content, provider: generated.provider, state }) });
     }
     throw new Error("Unknown MCP tool.");
   } catch (error) {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { revokeApiKey } from "@/lib/api-keys";
 import { recordAuditEvent } from "@/lib/integration-store";
-import { hasPermission, identityOrResponse, rejectCrossOrigin } from "@/lib/route-auth";
+import { hasPermission, identityOrResponse, rateLimitHeaders, rejectCrossOrigin } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
 
@@ -15,6 +15,5 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const revoked = await revokeApiKey(identity.context.workspaceId, id);
   if (!revoked) return NextResponse.json({ error: "API key not found." }, { status: 404 });
   await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "api_key.revoked", resourceType: "api_key", resourceId: id });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true }, { headers: rateLimitHeaders(identity.context) });
 }
-

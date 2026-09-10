@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createApiKey, listApiKeys } from "@/lib/api-keys";
 import { recordAuditEvent } from "@/lib/integration-store";
-import { hasPermission, identityOrResponse, rejectCrossOrigin } from "@/lib/route-auth";
+import { hasPermission, identityOrResponse, rateLimitHeaders, rejectCrossOrigin } from "@/lib/route-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   if ("response" in identity) return identity.response;
   if (!hasPermission(identity.context, "settings:read")) return NextResponse.json({ error: "You do not have permission to view API keys." }, { status: 403 });
   try {
-    return NextResponse.json({ keys: await listApiKeys(identity.context.workspaceId) });
+    return NextResponse.json({ keys: await listApiKeys(identity.context.workspaceId) }, { headers: rateLimitHeaders(identity.context) });
   } catch {
     return NextResponse.json({ error: "API key storage is not ready. Apply the platform database migration." }, { status: 503 });
   }
@@ -32,9 +32,8 @@ export async function POST(request: Request) {
       : ["workspace:read"];
     const key = await createApiKey({ workspaceId: identity.context.workspaceId, createdBy: identity.context.userId, name, scopes });
     await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "api_key.created", resourceType: "api_key", resourceId: key.id, metadata: { name, scopes } });
-    return NextResponse.json({ ...key, warning: "Copy this key now. It will never be shown again." }, { status: 201 });
+    return NextResponse.json({ ...key, warning: "Copy this key now. It will never be shown again." }, { status: 201, headers: rateLimitHeaders(identity.context) });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not create API key." }, { status: 503 });
   }
 }
-
