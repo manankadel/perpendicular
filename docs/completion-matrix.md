@@ -15,6 +15,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Draft sequences with reply-pause/suppression guardrails | Live at launch scope | Sequence state and Gmail reply handling |
 | Ticket queue, priority SLA, resolution, CSAT | Live at launch scope | `ticketSlaMinutes`, inbox UI, workspace actions |
 | Gmail OAuth, encrypted refresh tokens, sync, watch renewal, webhook dedupe | Implemented; provider E2E pending | Gmail routes and integration health tables |
+| Persisted Gmail inbox message read surface | Live in code; provider E2E pending | `/api/inbox`, Inbox view, `inbox-store.ts` |
 | MCP parity for workspace read, employee chat/run, integration list | Live | `/api/mcp` and shared workspace persistence |
 | API keys hashed, scoped, revocable, rate-limited | Live | `api-keys.ts`, rate-limit tests |
 | Usage ledger and usage endpoint | Implemented; migration must be applied | `db/004_usage_ledger.sql`, `/api/usage` |
