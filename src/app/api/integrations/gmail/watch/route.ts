@@ -1,4 +1,4 @@
-import { identityOrResponse, rejectCrossOrigin } from "@/lib/route-auth";
+import { hasPermission, identityOrResponse, rejectCrossOrigin } from "@/lib/route-auth";
 import { watchGmail } from "@/lib/gmail";
 import { corsHeadersFor, corsJson } from "@/lib/cors";
 
@@ -10,6 +10,7 @@ export async function POST(request: Request) {
   if (originError) return originError;
   const identity = await identityOrResponse(request);
   if ("response" in identity) return identity.response;
+  if (!hasPermission(identity.context, "settings:write")) return corsJson({ error: "You do not have permission to renew Gmail watch." }, { status: 403 }, request);
   try {
     const result = await watchGmail(identity.context.workspaceId);
     return corsJson({ ok: true, ...result }, undefined, request);

@@ -1,5 +1,5 @@
 import { listIntegrationSummaries } from "@/lib/integration-store";
-import { identityOrResponse } from "@/lib/route-auth";
+import { hasPermission, identityOrResponse } from "@/lib/route-auth";
 import { corsJson, corsHeadersFor } from "@/lib/cors";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   const identity = await identityOrResponse(request);
   if ("response" in identity) return identity.response;
+  if (!hasPermission(identity.context, "workspace:read")) return corsJson({ error: "You do not have permission to view integrations." }, { status: 403 }, request);
   try {
     return corsJson({ integrations: await listIntegrationSummaries(identity.context.workspaceId) }, undefined, request);
   } catch {

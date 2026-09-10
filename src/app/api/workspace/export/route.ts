@@ -4,6 +4,7 @@ import { getUsageSummary } from "@/lib/usage";
 import { authenticateRequest, IdentityError } from "@/lib/identity";
 import { corsHeadersFor, corsJson } from "@/lib/cors";
 import { listIntegrationSummaries } from "@/lib/integration-store";
+import { hasPermission } from "@/lib/route-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -11,6 +12,7 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
     const identity = await authenticateRequest(request);
+    if (!hasPermission(identity, "workspace:read")) return corsJson({ error: "You do not have permission to export this workspace." }, { status: 403 }, request);
     const url = new URL(request.url);
     const workspace = await getWorkspace(identity.workspaceId);
     const integrations = await listIntegrationSummaries(identity.workspaceId).catch(() => workspace.integrations || []);

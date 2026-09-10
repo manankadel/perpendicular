@@ -33,3 +33,28 @@ test("operator controls expose webhook and dead-letter replay paths", () => {
   assert.match(route, /listWebhookEvents/);
   assert.match(route, /listDeadLetterJobs/);
 });
+
+test("REST surfaces enforce API-key scopes for reads and Gmail mutations", () => {
+  const workspace = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
+  const integrations = readFileSync(join(root, "src/app/api/integrations/route.ts"), "utf8");
+  const usage = readFileSync(join(root, "src/app/api/usage/route.ts"), "utf8");
+  const exportRoute = readFileSync(join(root, "src/app/api/workspace/export/route.ts"), "utf8");
+  const gmailTest = readFileSync(join(root, "src/app/api/integrations/gmail/test/route.ts"), "utf8");
+  const gmailDisconnect = readFileSync(join(root, "src/app/api/integrations/gmail/disconnect/route.ts"), "utf8");
+  assert.match(workspace, /hasPermission\(identity\.context, "workspace:read"\)/);
+  assert.match(integrations, /hasPermission\(identity\.context, "workspace:read"\)/);
+  assert.match(usage, /hasPermission\(identity, "settings:read"\)/);
+  assert.match(exportRoute, /hasPermission\(identity, "workspace:read"\)/);
+  assert.match(gmailTest, /hasPermission\(identity\.context, "settings:write"\)/);
+  assert.match(gmailDisconnect, /hasPermission\(identity\.context, "settings:write"\)/);
+});
+
+test("API key creation only accepts supported scopes", () => {
+  const route = readFileSync(join(root, "src/app/api/keys/route.ts"), "utf8");
+  const scopes = readFileSync(join(root, "src/lib/api-keys.ts"), "utf8");
+  assert.match(scopes, /workspace:read/);
+  assert.match(scopes, /workspace:write/);
+  assert.match(scopes, /settings:read/);
+  assert.match(scopes, /settings:write/);
+  assert.match(route, /Choose at least one supported scope/);
+});

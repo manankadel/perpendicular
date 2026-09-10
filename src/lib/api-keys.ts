@@ -13,6 +13,9 @@ export type ApiKeyRecord = {
   lastUsedAt: string | null;
 };
 
+export const apiKeyScopes = ["workspace:read", "workspace:write", "settings:read", "settings:write"] as const;
+export type ApiKeyScope = typeof apiKeyScopes[number];
+
 export class ApiKeyRateLimitError extends Error {
   constructor(readonly decision: RateLimitDecision) {
     super("API key rate limit exceeded.");

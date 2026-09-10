@@ -1,4 +1,4 @@
-import { createApiKey, listApiKeys } from "@/lib/api-keys";
+import { apiKeyScopes, createApiKey, listApiKeys, type ApiKeyScope } from "@/lib/api-keys";
 import { recordAuditEvent } from "@/lib/integration-store";
 import { hasPermission, identityOrResponse, rateLimitHeaders, rejectCrossOrigin } from "@/lib/route-auth";
 import { corsHeadersFor, corsJson } from "@/lib/cors";
@@ -27,9 +27,9 @@ export async function POST(request: Request) {
     const body = await request.json() as { name?: string; scopes?: unknown };
     const name = String(body.name || "").trim();
     if (!name || name.length > 80) return corsJson({ error: "A key name between 1 and 80 characters is required." }, { status: 400 }, request);
-    const scopes = Array.isArray(body.scopes)
-      ? body.scopes.filter((scope): scope is string => typeof scope === "string" && /^[a-z]+:[a-z]+$/.test(scope)).slice(0, 30)
-      : ["workspace:read"];
+    const requestedScopes = Array.isArray(body.scopes) ? body.scopes : ["workspace:read"];
+    const scopes = [...new Set(requestedScopes.filter((scope): scope is ApiKeyScope => typeof scope === "string" && (apiKeyScopes as readonly string[]).includes(scope)))] as ApiKeyScope[];
+    if (!scopes.length) return corsJson({ error: `Choose at least one supported scope: ${apiKeyScopes.join(", ")}.` }, { status: 400 }, request);
     const key = await createApiKey({ workspaceId: identity.context.workspaceId, createdBy: identity.context.userId, name, scopes });
     await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "api_key.created", resourceType: "api_key", resourceId: key.id, metadata: { name, scopes } });
     return corsJson({ ...key, warning: "Copy this key now. It will never be shown again." }, { status: 201, headers: rateLimitHeaders(identity.context) }, request);

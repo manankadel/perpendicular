@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { createOAuthState } from "@/lib/integration-store";
 import { googleAuthorizeUrl } from "@/lib/gmail";
-import { identityOrResponse, rejectCrossOrigin } from "@/lib/route-auth";
+import { hasPermission, identityOrResponse, rejectCrossOrigin } from "@/lib/route-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,6 +20,7 @@ export async function GET(request: Request) {
   if (originError) return originError;
   const identity = await identityOrResponse(request);
   if ("response" in identity) return identity.response;
+  if (!hasPermission(identity.context, "settings:write")) return NextResponse.json({ error: "You do not have permission to connect Gmail." }, { status: 403 });
   try {
     const verifier = codeVerifier();
     const state = await createOAuthState(identity.context.workspaceId, identity.context.userId, "google-gmail", verifier);
@@ -28,4 +29,3 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Google connection is not configured." }, { status: 503 });
   }
 }
-

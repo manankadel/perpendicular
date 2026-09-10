@@ -1,5 +1,6 @@
 import { corsJson } from "@/lib/cors";
 import { authenticateRequest, IdentityError } from "@/lib/identity";
+import { hasPermission } from "@/lib/route-auth";
 import { getUsageSummary } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +9,7 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
     const identity = await authenticateRequest(request);
+    if (!hasPermission(identity, "settings:read")) return corsJson({ error: "You do not have permission to view usage." }, { status: 403 }, request);
     const url = new URL(request.url);
     const requestedDays = Number(url.searchParams.get("days") || 30);
     const days = Number.isFinite(requestedDays) ? Math.min(90, Math.max(1, Math.floor(requestedDays))) : 30;

@@ -116,6 +116,7 @@ function onboardingGoal(value: unknown): OnboardingGoal {
 async function getWorkspaceRoute(request: Request) {
   const identity = await getIdentity(request);
   if ("response" in identity) return identity.response;
+  if (!hasPermission(identity.context, "workspace:read")) return json({ error: "You do not have permission to read this workspace." }, { status: 403 });
   try {
     const state = await getWorkspace(identity.context.workspaceId);
     let integrations = state.integrations || [];
