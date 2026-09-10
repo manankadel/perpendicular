@@ -58,3 +58,12 @@ test("API key creation only accepts supported scopes", () => {
   assert.match(scopes, /settings:write/);
   assert.match(route, /Choose at least one supported scope/);
 });
+
+test("Google sign-in stays product-owned and uses a safe return path", () => {
+  const route = readFileSync(join(root, "src/app/api/auth/google/start/route.ts"), "utf8");
+  const login = readFileSync(join(root, "src/components/PerpendicularLogin.tsx"), "utf8");
+  assert.match(route, /safeReturnPath/);
+  assert.match(route, /api\/oauth\/google\/start/);
+  assert.match(route, /PERPENDICULAR_WEB_ORIGIN/);
+  assert.match(login, /api\/auth\/google\/start/);
+});
