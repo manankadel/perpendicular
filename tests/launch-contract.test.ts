@@ -103,3 +103,11 @@ test("sequence enrollment has a persisted suppression guard", () => {
   assert.match(workspace, /cannot enter a sequence/);
   assert.match(docs, /suppress-row/);
 });
+
+test("public research does not follow unvalidated redirects or unbounded bodies", () => {
+  const research = readFileSync(join(root, "src/lib/public-research.ts"), "utf8");
+  assert.match(research, /redirect: "manual"/);
+  assert.match(research, /maxRedirects/);
+  assert.match(research, /maxResponseBytes/);
+  assert.match(research, /assertPublicHost\(url\)/);
+});

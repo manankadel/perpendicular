@@ -10,6 +10,10 @@ export type WebsiteResearch = {
   text: string;
 };
 
+const maxRedirects = 3;
+const maxResponseBytes = 1_000_000;
+const redirectStatuses = new Set([301, 302, 303, 307, 308]);
+
 function stripHtml(value: string) {
   return value
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -41,19 +45,53 @@ async function assertPublicHost(url: URL) {
   if (!addresses.length || addresses.some((entry) => privateAddress(entry.address))) throw new Error("The URL does not resolve to a public address.");
 }
 
+async function readResponseText(response: Response) {
+  const reader = response.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      size += chunk.value.byteLength;
+      if (size > maxResponseBytes) {
+        await reader.cancel();
+        throw new Error("The source is too large to research safely.");
+      }
+      chunks.push(chunk.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8");
+}
+
 export async function researchWebsite(input: string): Promise<WebsiteResearch> {
-  const url = new URL(input);
+  let url = new URL(input);
   if (!/^https?:$/.test(url.protocol)) throw new Error("Only public HTTP and HTTPS URLs can be researched.");
-  await assertPublicHost(url);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    const response = await fetch(url, {
-      headers: { accept: "text/html, text/plain;q=0.9", "user-agent": "PerpendicularBot/1.0 (+self-hosted)" },
-      signal: controller.signal,
-    });
+    let response: Response | undefined;
+    for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount += 1) {
+      await assertPublicHost(url);
+      response = await fetch(url, {
+        redirect: "manual",
+        headers: { accept: "text/html, text/plain;q=0.9", "user-agent": "PerpendicularBot/1.0 (+self-hosted)" },
+        signal: controller.signal,
+      });
+      if (!redirectStatuses.has(response.status)) break;
+      const location = response.headers.get("location");
+      if (!location || redirectCount === maxRedirects) throw new Error("The source redirected too many times or omitted its destination.");
+      url = new URL(location, url);
+      if (!/^https?:$/.test(url.protocol)) throw new Error("The source redirected to an unsupported protocol.");
+    }
+    if (!response) throw new Error("The source could not be fetched.");
     if (!response.ok) throw new Error(`Source returned HTTP ${response.status}.`);
-    const html = await response.text();
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType && !/^(text\/html|application\/xhtml\+xml|text\/plain)(?:;|$)/i.test(contentType)) throw new Error("The source is not readable text or HTML.");
+    const html = await readResponseText(response);
     const text = stripHtml(html).slice(0, 12000);
     if (!text) throw new Error("The source contained no readable text.");
     return { url: url.toString(), title: html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim() || null, description: meta(html, "description") || meta(html, "og:description"), text };
