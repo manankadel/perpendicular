@@ -8,6 +8,7 @@ const overlay = readFileSync(join(root, "deploy/dell/perpendicular.image.compose
 const deployScript = readFileSync(join(root, "deploy/dell/deploy-image.sh"), "utf8");
 const workflow = readFileSync(join(root, ".github/workflows/perpendicular-image.yml"), "utf8");
 const serverStore = readFileSync(join(root, "src/lib/server-store.ts"), "utf8");
+const healthRoute = readFileSync(join(root, "src/app/api/health/route.ts"), "utf8");
 
 test("Dell image overlay cannot fall back to a production source build", () => {
   assert.match(overlay, /image: \$\{PERPENDICULAR_IMAGE:\?/);
@@ -32,4 +33,10 @@ test("image publication is gated by the product verification suite", () => {
 
 test("production startup does not mutate the database schema", () => {
   assert.match(serverStore, /if \(process\.env\.NODE_ENV === "production"\) return database;/);
+});
+
+test("production health fails closed when required migrations are missing", () => {
+  assert.match(healthRoute, /perpendicular_usage_ledger/);
+  assert.match(healthRoute, /information_schema\.tables/);
+  assert.match(healthRoute, /status: production && !ok \? 503 : 200/);
 });
