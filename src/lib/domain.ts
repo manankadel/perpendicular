@@ -200,6 +200,7 @@ export type WorkspaceState = {
   sequences: Sequence[];
   tickets: Ticket[];
   activity: Activity[];
+  suppressedEmails: string[];
   integrations?: Array<{
     provider: string;
     status: "not_configured" | "connected" | "degraded" | "disconnected";
@@ -243,6 +244,7 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
   const onboarding = state.workspace.onboarding || createOnboardingState(state.employees.length ? "completed" : "not_started");
   return {
     ...state,
+    suppressedEmails: Array.isArray(state.suppressedEmails) ? state.suppressedEmails.map((email) => email.toLowerCase()) : [],
     workspace: {
       ...state.workspace,
       id: state.workspace.id || companyId,
@@ -273,6 +275,7 @@ function createEmptyState(companyId: string): WorkspaceState {
     sequences: [],
     tickets: [],
     activity: [],
+    suppressedEmails: [],
     integrations: [],
   };
 }

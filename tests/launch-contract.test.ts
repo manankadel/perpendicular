@@ -92,3 +92,14 @@ test("pricing explicitly identifies the open-source launch", () => {
   assert.match(pricing, /openSource: true/);
   assert.match(pricing, /checkout: false/);
 });
+
+test("sequence enrollment has a persisted suppression guard", () => {
+  const domain = readFileSync(join(root, "src/lib/domain.ts"), "utf8");
+  const workspace = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
+  const docs = readFileSync(join(root, "src/app/api/docs/route.ts"), "utf8");
+  assert.match(domain, /suppressedEmails: string\[\]/);
+  assert.match(workspace, /case "suppress-row"/);
+  assert.match(workspace, /case "unsuppress-row"/);
+  assert.match(workspace, /cannot enter a sequence/);
+  assert.match(docs, /suppress-row/);
+});

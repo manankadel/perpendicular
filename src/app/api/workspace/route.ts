@@ -338,6 +338,7 @@ async function postWorkspace(request: Request): Promise<Response> {
           const name = String(body.name || "").trim();
           const company = String(body.company || "").trim();
           if (!list || !name || !company || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("List, name, company, and a valid email are required.");
+          if (state.suppressedEmails.includes(email)) throw new Error("This address is suppressed for the workspace.");
           if (list.rows.some((row) => row.email.toLowerCase() === email)) throw new Error("This email is already in the list.");
           list.rows.unshift({ id: createId("row"), name, email, company, role: String(body.role || "Unknown"), location: String(body.location || "Unknown"), score: 50, status: "new", emailStatus: "unknown", intent: "Imported lead", companyInsight: "No public research captured yet", enrollmentStatus: "not enrolled", lastAction: "Imported by workspace operator" });
           list.updatedAt = timestamp();
@@ -443,11 +444,31 @@ async function postWorkspace(request: Request): Promise<Response> {
           const sequence = state.sequences.find((item) => item.id === String(body.sequenceId || ""));
           if (!list || !row || !sequence) throw new Error("Lead or sequence not found.");
           if (row.status !== "enriched") throw new Error("Research the lead before enrolling it.");
+          if (state.suppressedEmails.includes(row.email.toLowerCase())) throw new Error("This address is suppressed and cannot enter a sequence.");
           if (row.enrollmentStatus === "enrolled") return state;
           row.enrollmentStatus = "enrolled";
           row.lastAction = `Enrolled in ${sequence.name}`;
           sequence.enrolled += 1;
           addActivity(state, { type: "sequence", title: `${row.name} entered ${sequence.name}`, detail: "Reply-pause and suppression checks enabled", });
+          return state;
+        }
+        case "suppress-row": {
+          const list = state.lists.find((item) => item.id === String(body.listId || ""));
+          const row = list?.rows.find((item) => item.id === String(body.rowId || ""));
+          if (!list || !row) throw new Error("Lead row not found.");
+          const email = row.email.toLowerCase();
+          if (!state.suppressedEmails.includes(email)) state.suppressedEmails.push(email);
+          row.lastAction = "Suppressed for this workspace";
+          addActivity(state, { type: "lead", title: `${row.name} was suppressed`, detail: "The address cannot be imported or enrolled in a sequence", });
+          return state;
+        }
+        case "unsuppress-row": {
+          const list = state.lists.find((item) => item.id === String(body.listId || ""));
+          const row = list?.rows.find((item) => item.id === String(body.rowId || ""));
+          if (!list || !row) throw new Error("Lead row not found.");
+          state.suppressedEmails = state.suppressedEmails.filter((email) => email !== row.email.toLowerCase());
+          row.lastAction = "Suppression removed by workspace operator";
+          addActivity(state, { type: "lead", title: `${row.name} was unsuppressed`, detail: "The address may be researched and enrolled again", });
           return state;
         }
         case "create-ticket": {
