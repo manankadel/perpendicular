@@ -11,6 +11,7 @@ const serverStore = readFileSync(join(root, "src/lib/server-store.ts"), "utf8");
 const healthRoute = readFileSync(join(root, "src/app/api/health/route.ts"), "utf8");
 const database = readFileSync(join(root, "src/lib/database.ts"), "utf8");
 const productionSmoke = readFileSync(join(root, "scripts/production-smoke.mjs"), "utf8");
+const nextConfig = readFileSync(join(root, "next.config.ts"), "utf8");
 
 test("Dell image overlay cannot fall back to a production source build", () => {
   assert.match(overlay, /image: \$\{PERPENDICULAR_IMAGE:\?/);
@@ -67,4 +68,12 @@ test("production smoke checks cover public launch gates", () => {
   assert.match(productionSmoke, /unauthenticated workspace rejection/);
   assert.match(productionSmoke, /OpenAPI documentation/);
   assert.match(productionSmoke, /truthful pricing endpoint/);
+});
+
+test("browser security headers are configured for every route", () => {
+  assert.match(nextConfig, /Strict-Transport-Security/);
+  assert.match(nextConfig, /X-Content-Type-Options/);
+  assert.match(nextConfig, /X-Frame-Options/);
+  assert.match(nextConfig, /Referrer-Policy/);
+  assert.match(nextConfig, /Permissions-Policy/);
 });
