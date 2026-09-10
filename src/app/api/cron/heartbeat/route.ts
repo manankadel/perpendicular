@@ -42,6 +42,7 @@ export async function POST(request: Request) {
           const employee = workspace.employees.find((candidate) => candidate.id === employeeSnapshot.id);
           const currentSchedule = employee?.schedule;
           if (!employee || !currentSchedule?.enabled) return workspace;
+          if (workspace.workspace.aiCredits.remaining < 2) throw new Error("Not enough AI Credits for heartbeat work.");
           const task = currentSchedule.task || "Review the workspace and write the highest-leverage next action.";
           const result = await generateEmployeeReply(employee, task, workspace.documents);
           const score = scoreRun(task, result.content);

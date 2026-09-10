@@ -61,6 +61,7 @@ export async function POST(request: Request) {
       if (!message) throw new Error("Message is required.");
       const current = await getWorkspace(identity.context.workspaceId);
       const employee = employeeFrom(current, employeeId);
+      if (current.workspace.aiCredits.remaining < 1) throw new Error("Not enough AI Credits for chat.");
       const generated = await generateEmployeeReply(employee, message, current.documents);
       const state = await updateWorkspace(identity.context.workspaceId, (workspace) => {
         let conversation = workspace.conversations.find((item) => item.employeeId === employeeId);
@@ -82,6 +83,7 @@ export async function POST(request: Request) {
       const current = await getWorkspace(identity.context.workspaceId);
       const employee = employeeFrom(current, employeeId);
       if (!task) throw new Error("Task is required.");
+      if (current.workspace.aiCredits.remaining < 2) throw new Error("Not enough AI Credits for a run.");
       const generated = await generateEmployeeReply(employee, task, current.documents);
       const state = await updateWorkspace(identity.context.workspaceId, (workspace) => {
         const score = scoreRun(task, generated.content);

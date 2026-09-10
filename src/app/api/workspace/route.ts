@@ -203,6 +203,7 @@ async function postWorkspace(request: Request): Promise<Response> {
       const employee = onboarding.employeeId ? findEmployee(current, onboarding.employeeId) : undefined;
       if (!employee || !onboarding.goal) return json({ error: "Complete workspace discovery before running the first brief." }, { status: 400 });
       if (onboarding.runId) return json(current);
+      if (current.workspace.aiCredits.remaining < 2) return json({ error: "Not enough AI Credits for the first brief." }, { status: 402 });
       const task = employee.goldenTests[0]?.input || "Review the workspace and propose the three highest-leverage next actions for this week.";
       const result = await generateEmployeeReply(employee, task, current.documents);
       const next = await updateWorkspace(companyId, (state) => {
@@ -245,6 +246,7 @@ async function postWorkspace(request: Request): Promise<Response> {
       const current = await getWorkspace(companyId);
       const employee = findEmployee(current, employeeId);
       if (!employee) return json({ error: "Employee not found." }, { status: 404 });
+      if (current.workspace.aiCredits.remaining < 1) return json({ error: "Not enough AI Credits for chat." }, { status: 402 });
       const result = await generateEmployeeReply(employee, message, current.documents);
       const next = await updateWorkspace(companyId, (state) => {
         let conversation = state.conversations.find((item) => item.employeeId === employeeId);
@@ -352,6 +354,7 @@ async function postWorkspace(request: Request): Promise<Response> {
           const employee = findEmployee(state, String(body.employeeId || ""));
           const task = String(body.task || "").trim();
           if (!employee || !task) throw new Error("Employee and task are required.");
+          if (state.workspace.aiCredits.remaining < 2) throw new Error("Not enough AI Credits for a run.");
           const result = await generateEmployeeReply(employee, task, state.documents);
           const run = makeRun(state, employee, task, "manual", result.content);
           run.trace[2].detail = `${employee.model} · ${result.provider}`;
@@ -361,6 +364,7 @@ async function postWorkspace(request: Request): Promise<Response> {
         case "evaluate-employee": {
           const employee = findEmployee(state, String(body.employeeId || ""));
           if (!employee) throw new Error("Employee not found.");
+          if (state.workspace.aiCredits.remaining < 2) throw new Error("Not enough AI Credits for an evaluation.");
           const requestedVersionId = String(body.promptVersionId || "").trim();
           const evaluatedVersion = requestedVersionId
             ? employee.promptVersions.find((version) => version.id === requestedVersionId)

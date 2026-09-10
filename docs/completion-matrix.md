@@ -18,7 +18,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | MCP parity for workspace read, employee chat/run, integration list | Live | `/api/mcp` and shared workspace persistence |
 | API keys hashed, scoped, revocable, rate-limited | Live | `api-keys.ts`, rate-limit tests |
 | Usage ledger and usage endpoint | Implemented; migration must be applied | `db/004_usage_ledger.sql`, `/api/usage` |
-| Workspace export and owner-confirmed deletion | Implemented; destructive E2E pending | `/api/workspace/export`, `/api/workspace/privacy` |
+| Workspace JSON/CSV export and owner-confirmed deletion | Implemented; destructive E2E pending | `/api/workspace/export`, `/api/workspace/privacy` |
 | Webhook catalog and dead-letter replay controls | Implemented; provider E2E pending | `/api/ops`, Settings → Operations |
 
 ## Explicitly not claimed
