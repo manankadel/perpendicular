@@ -71,8 +71,10 @@ It never runs `docker compose down`, `--remove-orphans`, database migrations, or
 ## Health check
 
 ```bash
-curl -fsS https://perpendicular.bluebloodstudio.com/api/workspace | jq '.workspace, (.employees | length)'
+curl -fsS https://perpendicular-api.bluebloodstudio.com/api/health | jq '{ok, database, schema, configuration, version}'
 ```
+
+The workspace endpoint is authenticated and should not be used as an anonymous health probe. A production release is not ready when `schema.ok` is false or when `configuration.gaps` contains a required provider setting.
 
 The app falls back to atomic JSON storage only outside production. On the Dell, a Postgres connection failure is an incident and the API returns an unavailable status; it does not silently accept writes into ephemeral container storage.
 

@@ -47,6 +47,8 @@ npm audit --omit=dev --audit-level=high
 
 The API contract is available at `/api/docs`. Authenticated operators can export their workspace at `/api/workspace/export` or permanently delete it through `/api/workspace/privacy` with an exact workspace-ID confirmation. The launch runbook and trust boundaries are in [`docs/production-architecture.md`](docs/production-architecture.md) and [`deploy/dell/README.md`](deploy/dell/README.md).
 
+The public API health probe is `https://perpendicular-api.bluebloodstudio.com/api/health`. It reports database/schema readiness and non-secret provider configuration gaps; `/api/workspace` remains authenticated.
+
 The Dell release includes a verified Postgres backup script at `deploy/dell/backup-postgres.sh`. It is intentionally separate from application deploys; deploys never run migrations or touch the backup schedule.
 
 New workspaces do not receive demo employees, leads, content, or metrics. Onboarding creates only what the operator requested and can prove: one discovered source, one scoped employee, and one real run. If the public URL cannot be fetched, the operator can provide a source brief; if Ollama is unavailable, the first run stops with a configuration error instead of rendering a placeholder.
