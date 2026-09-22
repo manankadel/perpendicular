@@ -20,6 +20,7 @@ export function GET(request: Request) {
   const next = new URL(returnPath, destination);
   const start = new URL("/api/oauth/google/start", identityOrigin());
   start.searchParams.set("next", next.toString());
+  start.searchParams.set("product", "perpendicular");
   return NextResponse.redirect(start, { headers: corsHeadersFor(request) });
 }
 
