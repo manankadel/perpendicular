@@ -69,7 +69,7 @@ export async function listIntegrationSummaries(workspaceId: string): Promise<Int
     health: await listIntegrationHealth(workspaceId, row.provider),
   })));
   if (!summaries.some((integration) => integration.provider === "gmail")) {
-    summaries.push({ provider: "gmail", status: "disconnected", accountEmail: null, scopes: [], lastSyncAt: null, health: [] });
+    summaries.push({ provider: "gmail", status: "not_configured", accountEmail: null, scopes: [], lastSyncAt: null, health: [] });
   }
   return summaries;
 }

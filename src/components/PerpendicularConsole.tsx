@@ -304,7 +304,10 @@ function OnboardingView({ state, viewer, mutate, busyAction }: { state: Workspac
 }
 
 function SettingsView({ state, usage }: { state: WorkspaceState; usage: UsageSummary | null }) {
-  const gmail = state.integrations?.find((integration) => integration.provider === "gmail");
+  const rawGmail = state.integrations?.find((integration) => integration.provider === "gmail");
+  const gmail = rawGmail?.status === "not_configured"
+    ? { ...rawGmail, status: "disconnected" as const }
+    : rawGmail;
   const [testRecipient, setTestRecipient] = useState("");
   const [gmailBusy, setGmailBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
