@@ -13,6 +13,10 @@ const tools = [
   { name: "workspace_get", description: "Read the authenticated workspace state.", inputSchema: { type: "object", properties: {} } },
   { name: "employee_chat", description: "Ask a named employee and persist the conversation.", inputSchema: { type: "object", required: ["employeeId", "message"], properties: { employeeId: { type: "string" }, message: { type: "string" } } } },
   { name: "employee_run", description: "Run a task through an employee and persist the scored run.", inputSchema: { type: "object", required: ["employeeId", "task"], properties: { employeeId: { type: "string" }, task: { type: "string" } } } },
+  { name: "mission_run", description: "Run a persisted mission through its assigned employee and leave the result waiting for review.", inputSchema: { type: "object", required: ["missionId"], properties: { missionId: { type: "string" } } } },
+  { name: "mission_approve", description: "Approve a mission result and mark it completed.", inputSchema: { type: "object", required: ["missionId"], properties: { missionId: { type: "string" } } } },
+  { name: "content_generate", description: "Generate a grounded content draft and leave it waiting for review.", inputSchema: { type: "object", required: ["contentId"], properties: { contentId: { type: "string" } } } },
+  { name: "content_approve", description: "Approve a generated content item.", inputSchema: { type: "object", required: ["contentId"], properties: { contentId: { type: "string" } } } },
   { name: "integrations_list", description: "List connected integration metadata without secrets.", inputSchema: { type: "object", properties: {} } },
 ];
 
@@ -24,6 +28,18 @@ function employeeFrom(state: WorkspaceState, id: string) {
   const employee = state.employees.find((item) => item.id === id);
   if (!employee) throw new Error("Employee not found.");
   return employee;
+}
+
+function missionFrom(state: WorkspaceState, id: string) {
+  const mission = state.missions.find((item) => item.id === id);
+  if (!mission) throw new Error("Mission not found.");
+  return mission;
+}
+
+function contentFrom(state: WorkspaceState, id: string) {
+  const item = state.content.find((candidate) => candidate.id === id);
+  if (!item) throw new Error("Content item not found.");
+  return item;
 }
 
 export async function POST(request: Request) {
@@ -54,6 +70,89 @@ export async function POST(request: Request) {
     if (name === "integrations_list") {
       if (!hasPermission(identity.context, "workspace:read")) throw new Error("Permission denied.");
       return respond({ jsonrpc: "2.0", id, result: result(await listIntegrationSummaries(identity.context.workspaceId)) });
+    }
+    if (name === "mission_run") {
+      if (!hasPermission(identity.context, "workspace:write")) throw new Error("Permission denied.");
+      const current = await getWorkspace(identity.context.workspaceId);
+      const mission = missionFrom(current, String(args.missionId || ""));
+      if (!mission.employeeId) throw new Error("Assign an employee before running the mission.");
+      const employee = employeeFrom(current, mission.employeeId);
+      if (current.workspace.aiCredits.remaining < 2) throw new Error("Not enough AI Credits for a mission run.");
+      const task = `${mission.title}\n\nMission: ${mission.description}\n\nUse workspace sources, separate facts from assumptions, and finish with an owner and next action.`;
+      const generated = await generateEmployeeReply(employee, task, current.documents);
+      const state = await updateWorkspace(identity.context.workspaceId, (workspace) => {
+        const liveMission = missionFrom(workspace, mission.id);
+        const liveEmployee = employeeFrom(workspace, employee.id);
+        const score = scoreRun(task, generated.content);
+        const runId = createId("run");
+        const createdAt = timestamp();
+        workspace.runs.unshift({ id: runId, employeeId: liveEmployee.id, trigger: "manual", task, output: generated.content, score, reason: "Mission run executed through MCP and left for human review.", status: "completed", createdAt, durationMs: 0, trace: [{ label: "Knowledge", detail: "Retrieved scoped workspace context", durationMs: 0, cost: 0, status: "complete" }, { label: "Worker", detail: generated.provider, durationMs: 0, cost: 1, status: "complete" }, { label: "Evaluator", detail: "Independent rubric score", durationMs: 0, cost: 1, status: "complete" }] });
+        workspace.runs = workspace.runs.slice(0, 30);
+        workspace.workspace.aiCredits.remaining = Math.max(0, workspace.workspace.aiCredits.remaining - 2);
+        liveMission.status = "needs_review";
+        liveMission.output = generated.content;
+        liveMission.runId = runId;
+        liveMission.updatedAt = createdAt;
+        liveEmployee.score = Math.round((liveEmployee.score * 0.65) + (score * 0.35));
+        liveEmployee.scoreTrend = [...liveEmployee.scoreTrend.slice(-6), score];
+        liveEmployee.lastRunAt = createdAt;
+        addActivity(workspace, { type: "mission", title: `${liveMission.title} is ready for review`, detail: `${liveEmployee.name} via MCP · score ${score}` });
+        return workspace;
+      });
+      try { await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.mission_run", resourceType: "mission", resourceId: mission.id }); } catch { if (process.env.NODE_ENV === "production") return persistedFailure(id, state, "The mission was saved, but its audit record could not be stored."); }
+      try { await recordUsage({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, feature: "mission_run", unit: "ai", units: 2, provider: generated.provider }); } catch { if (process.env.NODE_ENV === "production") return persistedFailure(id, state, "The mission was saved, but its usage record could not be stored."); }
+      return respond({ jsonrpc: "2.0", id, result: result({ output: generated.content, provider: generated.provider, state }) });
+    }
+    if (name === "mission_approve") {
+      if (!hasPermission(identity.context, "workspace:write")) throw new Error("Permission denied.");
+      const state = await updateWorkspace(identity.context.workspaceId, (workspace) => {
+        const mission = missionFrom(workspace, String(args.missionId || ""));
+        if (mission.status !== "needs_review") throw new Error("Run the mission before approving it.");
+        mission.status = "completed";
+        mission.updatedAt = timestamp();
+        addActivity(workspace, { type: "mission", title: `${mission.title} was approved via MCP`, detail: "Human review completed" });
+        return workspace;
+      });
+      try { await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.mission_approve", resourceType: "mission", resourceId: String(args.missionId || "") }); } catch { if (process.env.NODE_ENV === "production") return persistedFailure(id, state, "The mission was approved, but its audit record could not be stored."); }
+      return respond({ jsonrpc: "2.0", id, result: result(state) });
+    }
+    if (name === "content_generate") {
+      if (!hasPermission(identity.context, "workspace:write")) throw new Error("Permission denied.");
+      const current = await getWorkspace(identity.context.workspaceId);
+      const item = contentFrom(current, String(args.contentId || ""));
+      const employee = employeeFrom(current, item.employeeId || current.employees.find((candidate) => candidate.department === "Content")?.id || current.employees[0]?.id || "");
+      if (current.workspace.aiCredits.remaining < 2) throw new Error("Not enough AI Credits for content generation.");
+      const task = `Create a ${item.channel} draft titled "${item.title}". Objective: ${item.objective}. Use only workspace context, preserve the company voice, and call out unsupported claims that need review.`;
+      const generated = await generateEmployeeReply(employee, task, current.documents);
+      const state = await updateWorkspace(identity.context.workspaceId, (workspace) => {
+        const liveItem = contentFrom(workspace, item.id);
+        const liveEmployee = employeeFrom(workspace, employee.id);
+        const score = scoreRun(task, generated.content);
+        const createdAt = timestamp();
+        liveItem.status = "review";
+        liveItem.body = generated.content;
+        liveItem.employeeId = liveEmployee.id;
+        liveItem.updatedAt = createdAt;
+        workspace.workspace.aiCredits.remaining = Math.max(0, workspace.workspace.aiCredits.remaining - 2);
+        addActivity(workspace, { type: "content", title: `${liveItem.title} is ready for review`, detail: `${liveEmployee.name} via MCP · score ${score}` });
+        return workspace;
+      });
+      try { await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.content_generate", resourceType: "content", resourceId: item.id }); } catch { if (process.env.NODE_ENV === "production") return persistedFailure(id, state, "The draft was saved, but its audit record could not be stored."); }
+      try { await recordUsage({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, feature: "content_generation", unit: "ai", units: 2, provider: generated.provider }); } catch { if (process.env.NODE_ENV === "production") return persistedFailure(id, state, "The draft was saved, but its usage record could not be stored."); }
+      return respond({ jsonrpc: "2.0", id, result: result({ output: generated.content, provider: generated.provider, state }) });
+    }
+    if (name === "content_approve") {
+      if (!hasPermission(identity.context, "workspace:write")) throw new Error("Permission denied.");
+      const state = await updateWorkspace(identity.context.workspaceId, (workspace) => {
+        const item = contentFrom(workspace, String(args.contentId || ""));
+        if (!item.body) throw new Error("Generate the content before approving it.");
+        item.status = "approved";
+        item.updatedAt = timestamp();
+        addActivity(workspace, { type: "content", title: `${item.title} was approved via MCP`, detail: "Ready for scheduling" });
+        return workspace;
+      });
+      try { await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.content_approve", resourceType: "content", resourceId: String(args.contentId || "") }); } catch { if (process.env.NODE_ENV === "production") return persistedFailure(id, state, "The content was approved, but its audit record could not be stored."); }
+      return respond({ jsonrpc: "2.0", id, result: result(state) });
     }
     if (name === "employee_chat") {
       if (!hasPermission(identity.context, "workspace:write")) throw new Error("Permission denied.");

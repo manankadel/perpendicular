@@ -164,6 +164,10 @@ test("MCP mutations expose persisted state when audit or usage logging fails", (
   assert.match(mcp, /persisted: true/);
   assert.match(mcp, /mcp\.employee_chat/);
   assert.match(mcp, /mcp\.employee_run/);
+  assert.match(mcp, /name: "mission_run"/);
+  assert.match(mcp, /name: "mission_approve"/);
+  assert.match(mcp, /name: "content_generate"/);
+  assert.match(mcp, /name: "content_approve"/);
   assert.match(mcp, /name === "employee_chat"\)[\s\S]*hasPermission\(identity\.context, "workspace:write"\)/);
 });
 
