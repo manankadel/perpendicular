@@ -310,6 +310,8 @@ export type Campaign = {
   scheduledAt: string | null;
   contentId: string | null;
   listId: string | null;
+  lastRunAt?: string | null;
+  lastResult?: string | null;
   createdAt: string;
   updatedAt: string;
 };

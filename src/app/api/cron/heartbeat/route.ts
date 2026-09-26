@@ -7,6 +7,7 @@ import { renewGmailWatchIfNeeded } from "@/lib/gmail";
 import { recordUsage } from "@/lib/usage";
 import { nextAllowedScheduleAt, scheduleExecutionTask, scheduleWindowAllows } from "@/lib/scheduling";
 import { publishContentInState } from "@/lib/content-runtime";
+import { executeCampaignInState } from "@/lib/campaign-runtime";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -174,6 +175,29 @@ export async function POST(request: Request) {
           const item = workspace.content.find((candidate) => candidate.id === contentSnapshot.id);
           if (!item || item.status !== "scheduled" || !item.scheduledAt || new Date(item.scheduledAt).getTime() > Date.now()) return workspace;
           publishContentInState(workspace, item.id);
+          return workspace;
+        });
+        await completeJob(claim);
+        runCount += 1;
+      } catch (error) {
+        failedCount += 1;
+        await failJob(claim, error).catch(() => undefined);
+      }
+    }
+
+    const scheduledCampaigns = snapshot.campaigns.filter((campaign) => campaign.status === "scheduled" && campaign.scheduledAt && new Date(campaign.scheduledAt).getTime() <= Date.now() && campaign.contentId && snapshot.content.some((content) => content.id === campaign.contentId && (content.channel === "website" || content.channel === "blog")));
+    for (const campaignSnapshot of scheduledCampaigns) {
+      const scheduledFor = campaignSnapshot.scheduledAt || "immediate";
+      const claim = await claimJob({
+        workspaceId: companyId,
+        kind: "scheduled-campaign",
+        idempotencyKey: `campaign:${companyId}:${campaignSnapshot.id}:${scheduledFor}`,
+        payload: { campaignId: campaignSnapshot.id, scheduledFor },
+      });
+      if (!claim) continue;
+      try {
+        await updateWorkspace(companyId, (workspace) => {
+          executeCampaignInState(workspace, campaignSnapshot.id);
           return workspace;
         });
         await completeJob(claim);

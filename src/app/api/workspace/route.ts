@@ -48,6 +48,7 @@ import { executeWorkspacePlaybook } from "@/lib/playbook-runtime";
 import { executeTicketReplyDraft } from "@/lib/ticket-runtime";
 import { createDealInState, updateDealInState } from "@/lib/deal-runtime";
 import { publishContentInState, scheduleContentInState } from "@/lib/content-runtime";
+import { scheduleCampaignInState } from "@/lib/campaign-runtime";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -1243,18 +1244,7 @@ async function postWorkspace(request: Request): Promise<Response> {
           return state;
         }
         case "schedule-campaign": {
-          const campaign = state.campaigns.find((candidate) => candidate.id === String(body.campaignId || ""));
-          if (!campaign) throw new Error("Campaign not found.");
-          const scheduledAt = body.scheduledAt ? new Date(String(body.scheduledAt)) : new Date(Date.now() + 60 * 60 * 1000);
-          if (Number.isNaN(scheduledAt.getTime())) throw new Error("Campaign time is invalid.");
-          if (campaign.contentId) {
-            const content = findContent(state, campaign.contentId);
-            if (!content || !["approved", "scheduled"].includes(content.status)) throw new Error("Approve the campaign content before scheduling it.");
-          }
-          campaign.status = "scheduled";
-          campaign.scheduledAt = scheduledAt.toISOString();
-          campaign.updatedAt = timestamp();
-          addActivity(state, { type: "content", title: `${campaign.name} was scheduled`, detail: `Editorial execution at ${campaign.scheduledAt}` });
+          scheduleCampaignInState(state, String(body.campaignId || ""), body.scheduledAt ? String(body.scheduledAt) : null);
           return state;
         }
         case "create-keyword-monitor": {

@@ -29,6 +29,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Ticket queue, priority SLA, resolution, CSAT | Live at launch scope | `ticketSlaMinutes`, inbox UI, workspace actions |
 | Grounded support reply drafts with persisted citations and explicit human-send boundary | Live at launch scope | `draft-ticket-reply`, Inbox reply draft action, ticket `replyDraft` state |
 | Campaign drafts and scheduling with approved-content gate | Live at launch scope | `create-campaign`, `schedule-campaign`, Campaigns view |
+| Native content campaign execution | Live at launch scope | Shared `campaign-runtime`, heartbeat `scheduled-campaign` lease, campaign result persisted after public-page publication |
 | Public keyword monitoring from the self-hosted Dell | Live at launch scope | `researchPublicKeyword`, `create-keyword-monitor`, `check-keyword`, Keywords view |
 | Inbound agent records, published site/landing-page routes, and session-aware public site chat | Live at launch scope | `create-inbound-agent`, `create-site`, `/site/[slug]`, `/api/site/[slug]/chat`, persisted visitor session messages |
 | Workspace Apps definitions with explicit activation state | Live at launch scope | `create-app`, `toggle-app`, Apps view |
