@@ -18,7 +18,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Prompt versions, golden tests, evaluate, activate, rollback | Live | Employee detail UI and workspace actions |
 | Heartbeat scheduling with Postgres-leased idempotency | Live | `src/lib/job-store.ts`, heartbeat route, job tests |
 | Smart Lists, public research, dedupe, credit decrement, sequence enrollment | Live at launch scope | Workspace actions and UI |
-| Draft sequences with activation, explicit Gmail first-step send, reply-pause/suppression guardrails, and durable send idempotency | Live at launch scope | `activate-sequence`, `send-sequence-step`, `db/005_outbound_messages.sql`, Gmail reply handling |
+| Draft sequences with activation, explicit Gmail first-step send, reply-pause/suppression guardrails, outbound daily limits/time windows/weekend rules/domain suppression, and durable send idempotency | Live at launch scope | `activate-sequence`, `send-sequence-step`, `Outbound safety` in Settings, `db/005_outbound_messages.sql`, Gmail reply handling |
 | Ticket queue, priority SLA, resolution, CSAT | Live at launch scope | `ticketSlaMinutes`, inbox UI, workspace actions |
 | Gmail OAuth, encrypted refresh tokens, sync, watch renewal, webhook dedupe | Implemented; provider E2E pending | Gmail routes and integration health tables |
 | Persisted Gmail inbox message read surface | Live in code; provider E2E pending | `/api/inbox`, Inbox view, `inbox-store.ts` |

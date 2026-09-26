@@ -29,6 +29,7 @@ import { corsHeadersFor } from "@/lib/cors";
 import { recordUsage } from "@/lib/usage";
 import { createWidgetKey, widgetKeyHash } from "@/lib/widget";
 import { workspaceStateForClient } from "@/lib/workspace-view";
+import { normalizeDomain, outboundSafetyDecision, startOfLocalDay, validateOutboundSafetySettings } from "@/lib/outbound-safety";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -198,6 +199,9 @@ async function postWorkspace(request: Request): Promise<Response> {
   if (!action) return json({ error: "Missing action." }, { status: 400 });
   const requiredPermission = "workspace:write";
   if (!hasPermission(identity.context, requiredPermission)) return json({ error: "You do not have permission for this action." }, { status: 403 });
+  if (["update-outbound-safety", "suppress-domain", "unsuppress-domain"].includes(action) && !hasPermission(identity.context, "settings:write")) {
+    return json({ error: "You do not have permission to change outbound safety settings." }, { status: 403 });
+  }
 
   try {
     if (action === "bootstrap-workspace") {
@@ -281,13 +285,21 @@ async function postWorkspace(request: Request): Promise<Response> {
       if (row.sequenceId && row.sequenceId !== sequence.id) return json({ error: "This lead is enrolled in a different sequence." }, { status: 409 });
       if ((row.sequenceStepIndex || 0) > stepIndex) return json({ error: "This sequence step has already been sent." }, { status: 409 });
       if (current.suppressedEmails.includes(row.email.toLowerCase())) return json({ error: "This address is suppressed and cannot receive sequence mail." }, { status: 400 });
+      const safety = outboundSafetyDecision({ settings: current.outboundSafety, email: row.email });
+      if (!safety.allowed) return json({ error: safety.reason, code: safety.code, localDate: safety.localDate }, { status: 400 });
       let integrations;
       try { integrations = await listIntegrationSummaries(companyId); } catch { return json({ error: "Gmail connection status is unavailable. Apply the platform database migration." }, { status: 503 }); }
       const gmail = integrations.find((integration) => integration.provider === "gmail");
       if (gmail?.status !== "connected") return json({ error: "Connect Gmail before sending a sequence email." }, { status: 400 });
       const email = sequenceEmailFor(sequence, step, row);
       const idempotencyKey = sequenceStepIdempotencyKey(companyId, sequence.id, row.id, stepIndex);
-      const claimed = await claimOutboundMessage({ workspaceId: companyId, idempotencyKey, recipient: row.email, sequenceId: sequence.id, rowId: row.id, stepIndex, subject: email.subject, bodyText: email.body });
+      let claimed;
+      try {
+        claimed = await claimOutboundMessage({ workspaceId: companyId, idempotencyKey, recipient: row.email, sequenceId: sequence.id, rowId: row.id, stepIndex, subject: email.subject, bodyText: email.body, dailyLimit: current.outboundSafety.dailySendLimit, dailySince: startOfLocalDay(new Date(), current.outboundSafety.timezone).toISOString() });
+      } catch {
+        return json({ error: "Outbound safety could not be checked because the durable send store is unavailable." }, { status: 503 });
+      }
+      if (claimed.kind === "limit") return json({ error: `The workspace daily send limit of ${claimed.limit} has been reached. Try again after the local day resets.`, code: "daily_limit", sent: claimed.count, limit: claimed.limit }, { status: 429 });
       if (claimed.kind === "blocked") return json({ error: claimed.record.status === "unknown" ? "This send has an unknown provider outcome. Reconcile it before retrying." : "This send is already in progress. Refresh before retrying." }, { status: 409 });
       if (claimed.kind === "sent") {
         const reconciled = await applySequenceDelivery({ workspaceId: companyId, listId, rowId, sequenceId, stepIndex, providerMessageId: claimed.record.providerMessageId || "", sentAt: claimed.record.updatedAt });
@@ -795,6 +807,35 @@ async function postWorkspace(request: Request): Promise<Response> {
           state.suppressedEmails = state.suppressedEmails.filter((email) => email !== row.email.toLowerCase());
           row.lastAction = "Suppression removed by workspace operator";
           addActivity(state, { type: "lead", title: `${row.name} was unsuppressed`, detail: "The address may be researched and enrolled again", });
+          return state;
+        }
+        case "suppress-domain": {
+          const domain = normalizeDomain(String(body.domain || ""));
+          const validation = validateOutboundSafetySettings({ ...state.outboundSafety, suppressedDomains: [...state.outboundSafety.suppressedDomains, domain] });
+          if (validation.error) throw new Error(validation.error);
+          state.outboundSafety = validation.settings;
+          addActivity(state, { type: "lead", title: `${domain} was domain-suppressed`, detail: "Sequence sends to this domain and its subdomains are blocked" });
+          return state;
+        }
+        case "unsuppress-domain": {
+          const domain = normalizeDomain(String(body.domain || ""));
+          state.outboundSafety.suppressedDomains = state.outboundSafety.suppressedDomains.filter((candidate) => candidate !== domain);
+          state.outboundSafety.updatedAt = timestamp();
+          addActivity(state, { type: "lead", title: `${domain} was removed from domain suppression`, detail: "The domain may receive sequence mail when other safety checks pass" });
+          return state;
+        }
+        case "update-outbound-safety": {
+          const validation = validateOutboundSafetySettings({
+            dailySendLimit: body.dailySendLimit === undefined ? state.outboundSafety.dailySendLimit : Number(body.dailySendLimit),
+            timezone: typeof body.timezone === "string" ? body.timezone : state.outboundSafety.timezone,
+            sendWindowStart: typeof body.sendWindowStart === "string" ? body.sendWindowStart : state.outboundSafety.sendWindowStart,
+            sendWindowEnd: typeof body.sendWindowEnd === "string" ? body.sendWindowEnd : state.outboundSafety.sendWindowEnd,
+            skipWeekends: body.skipWeekends === undefined ? state.outboundSafety.skipWeekends : body.skipWeekends === true,
+            suppressedDomains: state.outboundSafety.suppressedDomains,
+          });
+          if (validation.error) throw new Error(validation.error);
+          state.outboundSafety = validation.settings;
+          addActivity(state, { type: "system", title: "Outbound safety settings updated", detail: `${state.outboundSafety.dailySendLimit} sends/day · ${state.outboundSafety.sendWindowStart}–${state.outboundSafety.sendWindowEnd} · ${state.outboundSafety.timezone}` });
           return state;
         }
         case "create-ticket": {

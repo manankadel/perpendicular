@@ -208,6 +208,27 @@ test("sequence sends require activation and are explicit Gmail mutations", () =>
   assert.match(console, /Activate after review/);
 });
 
+test("outbound sends are guarded by persisted workspace safety settings", () => {
+  const domain = readFileSync(join(root, "src/lib/domain.ts"), "utf8");
+  const safety = readFileSync(join(root, "src/lib/outbound-safety.ts"), "utf8");
+  const outbound = readFileSync(join(root, "src/lib/outbound-store.ts"), "utf8");
+  const workspace = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
+  const gmailTest = readFileSync(join(root, "src/app/api/integrations/gmail/test/route.ts"), "utf8");
+  const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
+  assert.match(domain, /outboundSafety: OutboundSafetySettings/);
+  assert.match(safety, /sendWindowStart/);
+  assert.match(safety, /skipWeekends/);
+  assert.match(safety, /suppressedDomains/);
+  assert.match(outbound, /pg_advisory_xact_lock/);
+  assert.match(outbound, /status = 'sent'/);
+  assert.match(workspace, /outboundSafetyDecision/);
+  assert.match(workspace, /dailyLimit: current\.outboundSafety\.dailySendLimit/);
+  assert.match(workspace, /case "update-outbound-safety"/);
+  assert.match(workspace, /case "suppress-domain"/);
+  assert.match(gmailTest, /outboundSafetyDecision/);
+  assert.match(console, /Outbound safety/);
+});
+
 test("public research does not follow unvalidated redirects or unbounded bodies", () => {
   const research = readFileSync(join(root, "src/lib/public-research.ts"), "utf8");
   assert.match(research, /redirect: "manual"/);

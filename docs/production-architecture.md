@@ -13,7 +13,7 @@ Perpendicular is a multi-tenant AI work system. The primary user journey is:
 7. The operator runs a first brief through the Dell Ollama worker. The result is persisted as a scored, traced Run before the onboarding flow is complete.
 8. Only after that proof does the product offer a daily Heartbeat schedule. Gmail remains disconnected and send-gated until the operator explicitly connects and tests it.
 9. A Smart List discovers or imports people and companies, enriches rows, scores fit, removes duplicates, and applies suppression rules.
-10. Qualified rows can enter a Sequence. After an operator activates the reviewed sequence, each Email step can be explicitly approved and sent through a connected Gmail mailbox. The send is rendered from the row, persisted with a workspace/sequence/row/step idempotency key, indexed in Inbox, and paused by reply or suppression rules. Automatic multi-step sending and provider-specific send windows remain future worker work.
+10. Qualified rows can enter a Sequence. After an operator activates the reviewed sequence, each Email step can be explicitly approved and sent through a connected Gmail mailbox. The send is rendered from the row, persisted with a workspace/sequence/row/step idempotency key, indexed in Inbox, and paused by reply or suppression rules. Workspace-configured daily limits, local timezone windows, weekend rules, individual-email suppression, and domain suppression are checked before the provider call. Automatic multi-step sending remains future worker work.
 11. Inbox events are normalized into conversations. Employees can draft or send only when the workspace policy allows it; otherwise a human approval gate is required.
 12. A capability-keyed website widget can receive visitor questions without exposing workspace state, route them to a selected operator, persist the conversation, and show the handoff in Inbox.
 13. Heartbeat jobs run through a Postgres-leased worker path at launch. Every run is idempotent, retryable, scored, traced, and visible in Activity; Redis is the scale-out seam.
@@ -55,7 +55,7 @@ The initial launch target is Tier 1/2: one monolithic API, one worker process, o
 
 ## Current launch data model
 
-Postgres is the source of truth for production. The current workspace aggregate is stored in `perpendicular_workspace_state` so the first launch can preserve the domain contract while the remaining normalized domain tables are introduced. Integration credentials, OAuth states, API keys, audit events, jobs, Gmail inbox records, provider health, webhook events, usage ledger records, rate-limit counters, and idempotent outbound send records are separate tables in `db/002_platform.sql`, `db/003_gmail_events_health.sql`, `db/004_usage_ledger.sql`, `db/005_outbound_messages.sql`, and `db/006_rate_limits.sql`.
+Postgres is the source of truth for production. The current workspace aggregate is stored in `perpendicular_workspace_state` so the first launch can preserve the domain contract while the remaining normalized domain tables are introduced. Integration credentials, OAuth states, API keys, audit events, jobs, Gmail inbox records, provider health, webhook events, usage ledger records, rate-limit counters, and idempotent outbound send records are separate tables in `db/002_platform.sql`, `db/003_gmail_events_health.sql`, `db/004_usage_ledger.sql`, `db/005_outbound_messages.sql`, and `db/006_rate_limits.sql`. Outbound settings are part of the durable workspace aggregate, while the outbound store uses a workspace advisory lock to enforce the daily cap across concurrent requests.
 
 Target normalized tables:
 
@@ -77,7 +77,7 @@ All tenant-owned tables include `workspace_id`, indexes begin with that key wher
 - The launch runner is a host-triggered heartbeat endpoint. It scans persisted due schedules, claims `perpendicular_jobs` with a lease and idempotency key, runs only due employees, and advances the next run time after success.
 - The launch worker uses Postgres leases for restart safety. API-key and public-widget rate limits use durable Postgres counters with a bounded in-memory fallback during a database outage; Redis remains the scale-out seam for queue partitioning.
 - Credit consumption is persisted in `perpendicular_usage_ledger` and exposed through `/api/usage`; the aggregate credit balance remains the fast product guardrail.
-- Gmail sync is explicit and deduplicates by provider message ID. The first Email step is approval-gated and protected by a durable outbound idempotency record; automatic later-step scheduling is intentionally not claimed until a sender worker exists.
+- Gmail sync is explicit and deduplicates by provider message ID. The first Email step is approval-gated and protected by a durable outbound idempotency record plus workspace outbound safety rules; automatic later-step scheduling is intentionally not claimed until a sender worker exists.
 - Heartbeat jobs use bounded retries and a dead-letter state; no UI may report a background job as complete before its persisted result exists.
 - Provider webhooks are persisted before processing and deduplicated by provider event ID.
 - A worker restart must be safe: a job can run twice without sending a duplicate message or charging twice. An outbound request with an unknown provider outcome is held for reconciliation rather than retried blindly.

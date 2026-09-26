@@ -1,4 +1,7 @@
 import crypto from "node:crypto";
+import { defaultOutboundSafetySettings, normalizeOutboundSafetySettings, type OutboundSafetySettings } from "@/lib/outbound-safety";
+
+export type { OutboundSafetySettings } from "@/lib/outbound-safety";
 
 export type Department = "Growth" | "Content" | "Support" | "Operations";
 
@@ -287,6 +290,7 @@ export type WorkspaceState = {
   tickets: Ticket[];
   activity: Activity[];
   suppressedEmails: string[];
+  outboundSafety: OutboundSafetySettings;
   integrations?: Array<{
     provider: string;
     status: "not_configured" | "connected" | "degraded" | "disconnected";
@@ -479,6 +483,7 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
     tickets: Array.isArray(state.tickets) ? state.tickets : [],
     activity: Array.isArray(state.activity) ? state.activity : [],
     suppressedEmails: Array.isArray(state.suppressedEmails) ? state.suppressedEmails.map((email) => email.toLowerCase()) : [],
+    outboundSafety: normalizeOutboundSafetySettings(state.outboundSafety),
     workspace: {
       ...state.workspace,
       id: state.workspace.id || companyId,
@@ -525,6 +530,7 @@ function createEmptyState(companyId: string): WorkspaceState {
     tickets: [],
     activity: [],
     suppressedEmails: [],
+    outboundSafety: defaultOutboundSafetySettings(),
     integrations: [],
   };
 }

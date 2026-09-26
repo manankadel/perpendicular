@@ -67,7 +67,8 @@ function mapOutbound(row: OutboundRow): OutboundMessageRecord {
 export type ClaimOutboundResult =
   | { kind: "claimed"; record: OutboundMessageRecord }
   | { kind: "sent"; record: OutboundMessageRecord }
-  | { kind: "blocked"; record: OutboundMessageRecord };
+  | { kind: "blocked"; record: OutboundMessageRecord }
+  | { kind: "limit"; count: number; limit: number };
 
 export async function claimOutboundMessage(args: {
   workspaceId: string;
@@ -78,8 +79,52 @@ export async function claimOutboundMessage(args: {
   stepIndex: number;
   subject: string;
   bodyText: string;
+  dailyLimit?: number;
+  dailySince?: string;
 }): Promise<ClaimOutboundResult> {
   return transaction(async (client) => {
+    if (args.dailyLimit && args.dailySince) {
+      await client.query("select pg_advisory_xact_lock(hashtextextended($1, 5))", [args.workspaceId]);
+    }
+    const existing = await client.query<OutboundRow>(
+      `select id, workspace_id, idempotency_key, provider, recipient, sequence_id, row_id, step_index, subject, body_text, status, provider_message_id, provider_thread_id, error, created_at, updated_at
+       from perpendicular_outbound_messages where idempotency_key = $1 for update`,
+      [args.idempotencyKey],
+    );
+    const existingRow = existing.rows[0];
+    if (existingRow) {
+      const record = mapOutbound(existingRow);
+      if (record.status === "sent") return { kind: "sent", record };
+      if (record.status === "failed") {
+        if (args.dailyLimit && args.dailySince) {
+          const countResult = await client.query<{ count: string }>(
+            `select count(*)::text as count from perpendicular_outbound_messages
+             where workspace_id = $1 and status = 'sent' and updated_at >= $2`,
+            [args.workspaceId, args.dailySince],
+          );
+          const count = Number(countResult.rows[0]?.count || 0);
+          if (count >= args.dailyLimit) return { kind: "limit", count, limit: args.dailyLimit };
+        }
+        const retried = await client.query<OutboundRow>(
+          `update perpendicular_outbound_messages
+           set status = 'sending', error = null, updated_at = now()
+           where id = $1
+           returning id, workspace_id, idempotency_key, provider, recipient, sequence_id, row_id, step_index, subject, body_text, status, provider_message_id, provider_thread_id, error, created_at, updated_at`,
+          [record.id],
+        );
+        if (retried.rows[0]) return { kind: "claimed", record: mapOutbound(retried.rows[0]) };
+      }
+      return { kind: "blocked", record };
+    }
+    if (args.dailyLimit && args.dailySince) {
+      const countResult = await client.query<{ count: string }>(
+        `select count(*)::text as count from perpendicular_outbound_messages
+         where workspace_id = $1 and status = 'sent' and updated_at >= $2`,
+        [args.workspaceId, args.dailySince],
+      );
+      const count = Number(countResult.rows[0]?.count || 0);
+      if (count >= args.dailyLimit) return { kind: "limit", count, limit: args.dailyLimit };
+    }
     const inserted = await client.query<OutboundRow>(
       `insert into perpendicular_outbound_messages
         (id, workspace_id, idempotency_key, provider, recipient, sequence_id, row_id, step_index, subject, body_text, status)
@@ -89,17 +134,24 @@ export async function claimOutboundMessage(args: {
       [randomToken(18), args.workspaceId, args.idempotencyKey, args.recipient, args.sequenceId, args.rowId, args.stepIndex, args.subject, args.bodyText],
     );
     if (inserted.rows[0]) return { kind: "claimed", record: mapOutbound(inserted.rows[0]) };
-
-    const existing = await client.query<OutboundRow>(
+    const row = (await client.query<OutboundRow>(
       `select id, workspace_id, idempotency_key, provider, recipient, sequence_id, row_id, step_index, subject, body_text, status, provider_message_id, provider_thread_id, error, created_at, updated_at
        from perpendicular_outbound_messages where idempotency_key = $1 for update`,
       [args.idempotencyKey],
-    );
-    const row = existing.rows[0];
+    )).rows[0];
     if (!row) throw new Error("The outbound send record disappeared. Refresh and try again.");
     const record = mapOutbound(row);
     if (record.status === "sent") return { kind: "sent", record };
     if (record.status === "failed") {
+      if (args.dailyLimit && args.dailySince) {
+        const countResult = await client.query<{ count: string }>(
+          `select count(*)::text as count from perpendicular_outbound_messages
+           where workspace_id = $1 and status = 'sent' and updated_at >= $2`,
+          [args.workspaceId, args.dailySince],
+        );
+        const count = Number(countResult.rows[0]?.count || 0);
+        if (count >= args.dailyLimit) return { kind: "limit", count, limit: args.dailyLimit };
+      }
       const retried = await client.query<OutboundRow>(
         `update perpendicular_outbound_messages
          set status = 'sending', error = null, updated_at = now()
@@ -111,6 +163,15 @@ export async function claimOutboundMessage(args: {
     }
     return { kind: "blocked", record };
   });
+}
+
+export async function countSentOutboundMessagesSince(workspaceId: string, since: string) {
+  const result = await query<{ count: string }>(
+    `select count(*)::text as count from perpendicular_outbound_messages
+     where workspace_id = $1 and status = 'sent' and updated_at >= $2`,
+    [workspaceId, since],
+  );
+  return Number(result.rows[0]?.count || 0);
 }
 
 export async function markOutboundSent(id: string, providerMessageId: string, providerThreadId: string | null) {
