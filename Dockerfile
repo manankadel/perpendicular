@@ -19,6 +19,7 @@ ENV PERPENDICULAR_BUILD_SHA=$BUILD_SHA
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /app/data && chown -R node:node /app
 USER node
 EXPOSE 3000

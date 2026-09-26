@@ -23,6 +23,18 @@ test("the launch database contract persists idempotent outbound sequence sends",
   assert.match(docs, /send-sequence-step/);
 });
 
+test("knowledge sources support real file ingestion", () => {
+  const ingest = readFileSync(join(root, "src/lib/document-ingest.ts"), "utf8");
+  const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
+  const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
+  const dockerfile = readFileSync(join(root, "Dockerfile"), "utf8");
+  assert.match(ingest, /pdftotext/);
+  assert.match(route, /body\.fileData/);
+  assert.match(console, /type="file"/);
+  assert.match(console, /\.pdf/);
+  assert.match(dockerfile, /poppler-utils/);
+});
+
 test("the public API contract exposes usage and privacy controls", () => {
   const docs = readFileSync(join(root, "src/app/api/docs/route.ts"), "utf8");
   assert.match(docs, /\/api\/usage/);

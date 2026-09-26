@@ -23,6 +23,7 @@ import { sendGmailMessage, GmailSendError } from "@/lib/gmail";
 import { upsertGmailMessage } from "@/lib/inbox-store";
 import { claimOutboundMessage, markOutboundFailed, markOutboundSent, markOutboundUnknown } from "@/lib/outbound-store";
 import { sequenceEmailFor, sequenceStepIdempotencyKey } from "@/lib/sequence";
+import { ingestUploadedDocument } from "@/lib/document-ingest";
 import { researchPersonCompany, researchWebsite } from "@/lib/public-research";
 import { corsHeadersFor } from "@/lib/cors";
 import { recordUsage } from "@/lib/usage";
@@ -588,12 +589,14 @@ async function postWorkspace(request: Request): Promise<Response> {
           return state;
         }
         case "create-document": {
-          const name = String(body.name || "").trim();
+          const name = String(body.name || body.fileName || "").trim();
           let content = String(body.content || "").trim();
           if (body.source === "url") {
             const sourceUrl = String(body.url || "").trim();
             if (!sourceUrl) throw new Error("A URL is required for URL capture.");
             content = (await researchWebsite(sourceUrl)).text;
+          } else if (body.fileData) {
+            content = await ingestUploadedDocument({ content, fileData: String(body.fileData), fileName: String(body.fileName || name), fileType: String(body.fileType || "") });
           }
           if (!name || !content) throw new Error("Document name and content are required.");
           if (content.length > 100000) throw new Error("Knowledge source is too large. Keep it under 100,000 characters.");
