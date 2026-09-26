@@ -123,6 +123,16 @@ test("legacy one-operator workspaces receive a deterministic work queue", () => 
   assert.deepEqual(migrated.workspace.onboarding.employeeIds, [legacy.workspace.onboarding.employeeId]);
 });
 
+test("discovered workspaces receive a deterministic starter sequence during migration", () => {
+  const legacy = JSON.parse(JSON.stringify(createInitialState("discovered-company"))) as WorkspaceState;
+  legacy.sequences = [];
+  const migrated = normalizeWorkspaceState(legacy, "discovered-company");
+  assert.equal(migrated.sequences.length, 1);
+  assert.equal(migrated.sequences[0].id, "seq-onboarding-discovered-company");
+  assert.equal(migrated.sequences[0].steps.length, 5);
+  assert.equal(migrated.sequences[0].status, "draft");
+});
+
 test("ticket SLA windows follow the operational priority contract", () => {
   assert.equal(ticketSlaMinutes("urgent"), 30);
   assert.equal(ticketSlaMinutes("high"), 120);

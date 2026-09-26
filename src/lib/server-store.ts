@@ -14,13 +14,22 @@ const transientStates = new Map<string, WorkspaceState>();
 
 function needsWorkspaceMigration(state: WorkspaceState) {
   const candidate = state as Partial<WorkspaceState>;
+  const onboarding = candidate.workspace?.onboarding;
+  const needsStarterSequence = Array.isArray(candidate.sequences)
+    && candidate.sequences.length === 0
+    && Array.isArray(candidate.employees)
+    && candidate.employees.length > 0
+    && Array.isArray(candidate.documents)
+    && candidate.documents.length > 0
+    && Boolean(onboarding?.discoveredAt);
   return !candidate.profile
     || !Array.isArray(candidate.missions)
     || !Array.isArray(candidate.content)
     || !Array.isArray(candidate.playbooks)
     || !Array.isArray(state.workspace.onboarding?.employeeIds)
     || !Array.isArray(state.workspace.onboarding?.missionIds)
-    || !Array.isArray(state.workspace.onboarding?.contentIds);
+    || !Array.isArray(state.workspace.onboarding?.contentIds)
+    || needsStarterSequence;
 }
 
 async function getPool() {

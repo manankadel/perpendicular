@@ -448,10 +448,18 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
       lastProviderMessageId: row.lastProviderMessageId ?? null,
     })),
   }));
-  const sequences = (Array.isArray(state.sequences) ? state.sequences : []).map((sequence) => ({
+  let sequences: Sequence[] = (Array.isArray(state.sequences) ? state.sequences : []).map((sequence) => ({
     ...sequence,
     sent: typeof sequence.sent === "number" && Number.isFinite(sequence.sent) ? sequence.sent : 0,
   }));
+  if (sequences.length === 0 && employees.length > 0 && documents.length > 0 && onboarding.discoveredAt && onboarding.status !== "not_started") {
+    sequences = [buildStarterSequence({
+      companyId,
+      companyName: state.workspace.name || companyId,
+      goal: onboarding.goal || "revenue",
+      deterministic: true,
+    })];
+  }
   return {
     ...state,
     profile: state.profile || {
@@ -1100,6 +1108,36 @@ const onboardingGoalDetails: Record<OnboardingGoal, { title: string; department:
 
 export function onboardingGoalDetailsFor(goal: OnboardingGoal) {
   return onboardingGoalDetails[goal];
+}
+
+export function buildStarterSequence(args: {
+  companyId: string;
+  companyName: string;
+  goal: OnboardingGoal;
+  deterministic?: boolean;
+}): Sequence {
+  const companyName = args.companyName.trim() || "your company";
+  const prefix = args.deterministic
+    ? `seq-onboarding-${args.companyId.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 72) || "workspace"}`
+    : createId("seq");
+  const stepId = (number: number) => args.deterministic ? `${prefix}-step-${number}` : createId("step");
+  return {
+    id: prefix,
+    name: `${companyName} first conversation`,
+    status: "draft",
+    audience: "Ideal customer profile from company discovery",
+    enrolled: 0,
+    sent: 0,
+    replied: 0,
+    booked: 0,
+    steps: [
+      { id: stepId(1), channel: "Email", title: "Specific observation", delay: "Day 0", subject: `A useful observation about {{companyName}}`, body: `Hi {{firstName}} — I noticed {{companyName}} may be working through a problem related to ${args.goal}. I wrote down one specific observation from the public context. If it is useful, I can send it over.` },
+      { id: stepId(2), channel: "Email", title: "Useful follow-up", delay: "Day 3", subject: "One practical follow-up", body: "Sharing the smallest useful next step, not a generic pitch. I will pause if this is not relevant." },
+      { id: stepId(3), channel: "Task", title: "Review reply", delay: "Day 5", body: "Review any reply, attach the evidence, and decide whether to continue or suppress the contact." },
+      { id: stepId(4), channel: "Email", title: "Proof point", delay: "Day 7", subject: "The proof point", body: "Close the loop with one concrete proof point from the workspace and a low-friction next step." },
+      { id: stepId(5), channel: "Email", title: "Final nudge", delay: "Day 10", subject: "Should I close the loop?", body: "A final, respectful check-in. Stop the sequence if the contact replies or asks not to be contacted." },
+    ],
+  };
 }
 
 export function buildOnboardingArtifacts(args: {
