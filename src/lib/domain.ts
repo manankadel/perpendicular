@@ -319,6 +319,7 @@ export type SiteRecord = {
   kind: "website" | "landing_page";
   slug: string;
   agentId: string | null;
+  sourceContentId?: string | null;
   status: "draft" | "published";
   headline: string;
   body: string;

@@ -682,9 +682,34 @@ async function postWorkspace(request: Request): Promise<Response> {
         case "publish-content": {
           const item = findContent(state, String(body.contentId || ""));
           if (!item || !["approved", "scheduled"].includes(item.status)) throw new Error("Approve the content before publishing it.");
+          if (item.channel === "website" || item.channel === "blog") {
+            const agent = state.inboundAgents.find((candidate) => candidate.status === "live" && candidate.employeeId);
+            if (!agent) throw new Error("Publish a website operator before publishing website content.");
+            const baseSlug = item.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || createId("site");
+            let slug = baseSlug;
+            let collision = 2;
+            while (state.sites.some((site) => site.slug === slug)) slug = `${baseSlug}-${collision++}`;
+            state.sites.unshift({
+              id: createId("site"),
+              name: item.title,
+              kind: item.channel === "blog" ? "website" : "landing_page",
+              slug,
+              agentId: agent.id,
+              sourceContentId: item.id,
+              status: "published",
+              headline: item.title,
+              body: item.body,
+              createdAt: timestamp(),
+              updatedAt: timestamp(),
+            });
+            item.status = "published";
+            item.updatedAt = timestamp();
+            addActivity(state, { type: "content", title: `${item.title} was published as a public page`, detail: `/site/${slug} · grounded site chat is live` });
+            return state;
+          }
           item.status = "published";
           item.updatedAt = timestamp();
-          addActivity(state, { type: "content", title: `${item.title} was marked published`, detail: "Editorial state updated. Connect a channel publisher to send externally." });
+          addActivity(state, { type: "content", title: `${item.title} was marked published`, detail: "Editorial state updated. External channel delivery still requires its provider adapter." });
           return state;
         }
         case "install-playbook": {
