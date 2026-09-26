@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowUpRight, ShieldCheck } from "lucide-react";
 
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
+const canonicalOrigin = (process.env.NEXT_PUBLIC_CANONICAL_URL || "").replace(/\/$/, "");
 
 type LoginResponse = {
   message?: string;
@@ -20,6 +21,12 @@ export default function PerpendicularLogin({ next }: { next: string }) {
   const [mfaType, setMfaType] = useState<"totp" | "backup">("totp");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (canonicalOrigin && window.location.hostname === "perpendicular-nine.vercel.app") {
+      window.location.replace(`${canonicalOrigin}${window.location.pathname}${window.location.search}${window.location.hash}`);
+    }
+  }, []);
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

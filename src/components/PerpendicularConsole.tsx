@@ -42,6 +42,7 @@ type Viewer = { email: string; firstName: string; lastName: string };
 type OpsSummary = { webhooks: WebhookEventSummary[]; deadLetterJobs: DeadLetterJob[] };
 
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
+const canonicalOrigin = (process.env.NEXT_PUBLIC_CANONICAL_URL || "").replace(/\/$/, "");
 const apiPath = (path: string) => `${apiBase}${path}`;
 
 async function responseError(response: Response, fallback: string) {
@@ -476,6 +477,12 @@ export default function PerpendicularConsole() {
   const [leadForm, setLeadForm] = useState({ name: "", email: "", company: "", role: "", location: "" });
   const [sequenceForm, setSequenceForm] = useState({ name: "", audience: "", body: "" });
   const [ticketForm, setTicketForm] = useState({ subject: "", message: "", priority: "normal" });
+
+  useEffect(() => {
+    if (canonicalOrigin && window.location.hostname === "perpendicular-nine.vercel.app") {
+      window.location.replace(`${canonicalOrigin}${window.location.pathname}${window.location.search}${window.location.hash}`);
+    }
+  }, []);
 
   useEffect(() => {
     fetch(apiPath("/api/workspace"), { credentials: "include" })

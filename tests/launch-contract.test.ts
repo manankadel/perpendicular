@@ -85,6 +85,14 @@ test("Google sign-in stays product-owned and uses a safe return path", () => {
   assert.match(login, /api\/auth\/google\/start/);
 });
 
+test("the known Vercel alias hands sessions to the canonical cookie origin in the browser", () => {
+  const login = readFileSync(join(root, "src/components/PerpendicularLogin.tsx"), "utf8");
+  const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
+  assert.match(login, /perpendicular-nine\.vercel\.app/);
+  assert.match(login, /NEXT_PUBLIC_CANONICAL_URL/);
+  assert.match(console, /window\.location\.replace/);
+});
+
 test("Gmail sync has a workspace-scoped inbox read surface", () => {
   const route = readFileSync(join(root, "src/app/api/inbox/route.ts"), "utf8");
   const sync = readFileSync(join(root, "src/app/api/integrations/gmail/sync/route.ts"), "utf8");
