@@ -194,6 +194,9 @@ export type Ticket = {
   csat: number | null;
   replyDraft?: string | null;
   replyCitations?: string[];
+  requesterEmail?: string | null;
+  replyProviderMessageId?: string | null;
+  replySentAt?: string | null;
 };
 
 export type UsageSummary = {
@@ -771,6 +774,9 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
       ...ticket,
       replyDraft: typeof ticket.replyDraft === "string" ? ticket.replyDraft : null,
       replyCitations: Array.isArray(ticket.replyCitations) ? ticket.replyCitations.filter((citation): citation is string => typeof citation === "string") : [],
+      requesterEmail: typeof ticket.requesterEmail === "string" ? ticket.requesterEmail : null,
+      replyProviderMessageId: typeof ticket.replyProviderMessageId === "string" ? ticket.replyProviderMessageId : null,
+      replySentAt: typeof ticket.replySentAt === "string" ? ticket.replySentAt : null,
     })) : [],
     activity: Array.isArray(state.activity) ? state.activity : [],
     suppressedEmails: Array.isArray(state.suppressedEmails) ? state.suppressedEmails.map((email) => email.toLowerCase()) : [],

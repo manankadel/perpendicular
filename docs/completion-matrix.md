@@ -27,7 +27,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Pipeline REST and MCP resources with shared persistence | Live at launch scope | `/api/deals`, `/api/deals/{dealId}`, MCP `deal_create`/`deal_update`, shared `deal-runtime` used by UI, REST, and MCP |
 | Draft sequences with activation, explicit Gmail first-step send, reply-pause/suppression guardrails, outbound daily limits/time windows/weekend rules/domain suppression, and durable send idempotency | Live at launch scope | `activate-sequence`, `send-sequence-step`, `Outbound safety` in Settings, `db/005_outbound_messages.sql`, Gmail reply handling |
 | Ticket queue, priority SLA, resolution, CSAT | Live at launch scope | `ticketSlaMinutes`, inbox UI, workspace actions |
-| Grounded support reply drafts with persisted citations and explicit human-send boundary | Live at launch scope | `draft-ticket-reply`, Inbox reply draft action, ticket `replyDraft` state |
+| Grounded support reply drafts and explicit Gmail send | Live at launch scope; provider E2E pending | `draft-ticket-reply`, `send-ticket-reply`, `/api/tickets/{ticketId}/reply`, `ticket_reply_send`, Inbox reply actions, ticket citations and durable outbound idempotency |
 | Campaign drafts and scheduling with approved-content gate | Live at launch scope | `create-campaign`, `schedule-campaign`, Campaigns view |
 | Native content campaign execution | Live at launch scope | Shared `campaign-runtime`, heartbeat `scheduled-campaign` lease, campaign result persisted after public-page publication |
 | Public keyword monitoring from the self-hosted Dell | Live at launch scope | `researchPublicKeyword`, `create-keyword-monitor`, `check-keyword`, Keywords view |

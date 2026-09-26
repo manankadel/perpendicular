@@ -46,6 +46,7 @@ import { nextAllowedScheduleAt, nextScheduleAt, scheduleExecutionTask } from "@/
 import { executeWorkspaceApp } from "@/lib/app-runtime";
 import { executeWorkspacePlaybook } from "@/lib/playbook-runtime";
 import { executeTicketReplyDraft } from "@/lib/ticket-runtime";
+import { executeTicketReplySend } from "@/lib/ticket-send-runtime";
 import { createDealInState, updateDealInState } from "@/lib/deal-runtime";
 import { publishContentInState, scheduleContentInState } from "@/lib/content-runtime";
 import { scheduleCampaignInState } from "@/lib/campaign-runtime";
@@ -366,6 +367,19 @@ async function postWorkspace(request: Request): Promise<Response> {
       let auditRecorded = true;
       try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "gmail.sequence_message_sent", resourceType: "outbound_message", resourceId: claimed.record.id, metadata: { sequenceId: sequence.id, rowId: row.id, stepIndex, providerMessageId: sent.id, recipient: row.email } }); } catch { auditRecorded = false; }
       return json({ ...updated, delivery: { status: "sent", messageId: sent.id, threadId: sent.threadId || null, inboxRecorded, auditRecorded } }, { headers: rateLimitHeaders(identity.context) });
+    }
+
+    if (action === "send-ticket-reply") {
+      try {
+        const execution = await executeTicketReplySend({ workspaceId: companyId, ticketId: String(body.ticketId || ""), body: String(body.body || "").trim() || undefined, senderEmail: identity.context.email });
+        let auditRecorded = true;
+        try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "gmail.ticket_reply_sent", resourceType: "ticket", resourceId: execution.ticket.id, metadata: { providerMessageId: execution.delivery.messageId, recipient: execution.ticket.requesterEmail } }); } catch { auditRecorded = false; }
+        return json({ state: workspaceStateForClient(execution.state), ticket: execution.ticket, delivery: { ...execution.delivery, auditRecorded } }, { headers: rateLimitHeaders(identity.context) });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Gmail ticket reply failed.";
+        const status = message === "Ticket not found." ? 404 : message.includes("daily send limit") ? 429 : message.includes("unknown provider outcome") || message.includes("already in progress") ? 409 : message.includes("could not be checked") || message.includes("could not persist") ? 503 : 400;
+        return json({ error: message }, { status });
+      }
     }
 
     if (action === "run-onboarding-brief") {
@@ -1353,6 +1367,9 @@ async function postWorkspace(request: Request): Promise<Response> {
             slaDueAt: new Date(Date.now() + 1000 * 60 * ticketSlaMinutes(priority)).toISOString(),
             assignee: "Rhea",
             csat: null,
+            requesterEmail: String(body.requesterEmail || "").trim().toLowerCase() || null,
+            replyProviderMessageId: null,
+            replySentAt: null,
           };
           state.tickets.unshift(ticket);
           addActivity(state, { type: "ticket", title: `Ticket ${ticket.id} opened`, detail: `${ticket.priority} priority · SLA in ${ticketSlaMinutes(ticket.priority)} min`, });
