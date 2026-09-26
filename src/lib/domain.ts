@@ -268,6 +268,27 @@ export type PersonRecord = {
   updatedAt: string;
 };
 
+export type DealStage = "lead" | "qualified" | "proposal" | "won" | "lost";
+
+export type DealRecord = {
+  id: string;
+  name: string;
+  company: string;
+  personId: string | null;
+  amount: number;
+  currency: string;
+  stage: DealStage;
+  probability: number;
+  ownerEmployeeId: string | null;
+  source: string;
+  nextAction: string;
+  closeDate: string | null;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+  stageHistory: Array<{ stage: DealStage; at: string; note: string }>;
+};
+
 export type LeadSource = {
   id: string;
   name: string;
@@ -426,6 +447,7 @@ export type WorkspaceState = {
   sequences: Sequence[];
   schedules: ScheduledWork[];
   people: PersonRecord[];
+  deals: DealRecord[];
   leadSources: LeadSource[];
   campaigns: Campaign[];
   keywordMonitors: KeywordMonitor[];
@@ -510,6 +532,10 @@ function defaultPlaybooks(): Playbook[] {
 
 export function ticketSlaMinutes(priority: Ticket["priority"]) {
   return { urgent: 30, high: 120, normal: 480, low: 1440 }[priority];
+}
+
+export function dealProbability(stage: DealStage) {
+  return { lead: 10, qualified: 35, proposal: 65, won: 100, lost: 0 }[stage];
 }
 
 export function createOnboardingState(status: OnboardingState["status"] = "not_started"): OnboardingState {
@@ -610,6 +636,24 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
       lastProviderMessageId: row.lastProviderMessageId ?? null,
     })),
   }));
+  const deals: DealRecord[] = (Array.isArray(legacy.deals) ? legacy.deals : []).map((deal) => {
+    const stage = (["lead", "qualified", "proposal", "won", "lost"] as const).includes(deal.stage as never) ? deal.stage as DealStage : "lead";
+    const history = Array.isArray(deal.stageHistory) ? deal.stageHistory.filter((entry) => entry && typeof entry.stage === "string" && typeof entry.at === "string").map((entry) => ({ stage: (["lead", "qualified", "proposal", "won", "lost"] as const).includes(entry.stage as never) ? entry.stage as DealStage : stage, at: entry.at, note: typeof entry.note === "string" ? entry.note : "" })) : [];
+    return {
+      ...deal,
+      personId: typeof deal.personId === "string" ? deal.personId : null,
+      amount: Number.isFinite(deal.amount) ? Math.max(0, deal.amount) : 0,
+      currency: typeof deal.currency === "string" && deal.currency.trim() ? deal.currency.toUpperCase().slice(0, 3) : "USD",
+      stage,
+      probability: Number.isFinite(deal.probability) ? Math.min(100, Math.max(0, deal.probability)) : dealProbability(stage),
+      ownerEmployeeId: typeof deal.ownerEmployeeId === "string" ? deal.ownerEmployeeId : null,
+      source: typeof deal.source === "string" && deal.source.trim() ? deal.source : "manual",
+      nextAction: typeof deal.nextAction === "string" ? deal.nextAction : "",
+      closeDate: typeof deal.closeDate === "string" ? deal.closeDate : null,
+      notes: typeof deal.notes === "string" ? deal.notes : "",
+      stageHistory: history,
+    };
+  });
   let sequences: Sequence[] = (Array.isArray(state.sequences) ? state.sequences : []).map((sequence) => ({
     ...sequence,
     sent: typeof sequence.sent === "number" && Number.isFinite(sequence.sent) ? sequence.sent : 0,
@@ -704,6 +748,7 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
       runLog: Array.isArray(schedule.runLog) ? schedule.runLog.slice(0, 20) : [],
     })) : [],
     people: Array.isArray(state.people) ? state.people : [],
+    deals,
     leadSources: Array.isArray(state.leadSources) ? state.leadSources : [],
     campaigns: Array.isArray(state.campaigns) ? state.campaigns : [],
     keywordMonitors: Array.isArray(state.keywordMonitors) ? state.keywordMonitors : [],
@@ -768,6 +813,7 @@ function createEmptyState(companyId: string): WorkspaceState {
     sequences: [],
     schedules: [],
     people: [],
+    deals: [],
     leadSources: [],
     campaigns: [],
     keywordMonitors: [],

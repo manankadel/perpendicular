@@ -22,6 +22,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Heartbeat scheduling with Postgres-leased idempotency | Live | `src/lib/job-store.ts`, heartbeat route, job tests |
 | Smart Lists, public research, dedupe, credit decrement, sequence enrollment | Live at launch scope | Workspace actions and UI |
 | People and Lead Data records with explicit public qualification and source runs | Live at launch scope | `create-person`, `qualify-person`, `create-lead-source`, `run-lead-source`, People and Lead Data views |
+| Lite CRM pipeline with value, stages, owners, next actions, close dates, sources, and stage history | Live at launch scope | `create-deal`, `update-deal`, Pipeline view, dashboard pipeline metrics, additive workspace migration |
 | Draft sequences with activation, explicit Gmail first-step send, reply-pause/suppression guardrails, outbound daily limits/time windows/weekend rules/domain suppression, and durable send idempotency | Live at launch scope | `activate-sequence`, `send-sequence-step`, `Outbound safety` in Settings, `db/005_outbound_messages.sql`, Gmail reply handling |
 | Ticket queue, priority SLA, resolution, CSAT | Live at launch scope | `ticketSlaMinutes`, inbox UI, workspace actions |
 | Campaign drafts and scheduling with approved-content gate | Live at launch scope | `create-campaign`, `schedule-campaign`, Campaigns view |

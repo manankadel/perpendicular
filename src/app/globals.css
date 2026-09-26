@@ -279,6 +279,14 @@ button:disabled { cursor: wait; opacity: .52; }
 .list-title { color: var(--text); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; font-weight: 700; }
 .list-desc { margin-top: 5px; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
 .list-meta { margin-top: 7px; color: var(--text-dim); font-size: 10px; }
+.pipeline-board { display: grid; grid-template-columns: repeat(5, minmax(190px, 1fr)); gap: 10px; overflow-x: auto; padding: 14px; }
+.pipeline-column { min-height: 300px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: rgba(13,16,18,.68); }
+.pipeline-column-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pipeline-column-value { margin: 8px 0 12px; color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.pipeline-card { border: 1px solid var(--line); border-radius: 7px; padding: 12px; background: rgba(23,27,30,.9); }
+.pipeline-card .field { margin-top: 11px; margin-bottom: 9px; }
+.pipeline-card .field input, .pipeline-card .field select { min-height: 32px; padding: 6px 8px; font-size: 10px; }
+.pipeline-empty { padding: 18px 8px; color: var(--text-dim); font-size: 10px; text-align: center; }
 .priority-dot { display: inline-block; width: 7px; height: 7px; margin: 0 7px 1px 0; border-radius: 50%; background: var(--text-dim); }
 .priority-dot.high { background: var(--signal); box-shadow: 0 0 0 3px var(--signal-soft); }
 .priority-dot.normal { background: var(--blue); }

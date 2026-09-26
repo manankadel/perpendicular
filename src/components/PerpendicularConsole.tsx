@@ -6,6 +6,7 @@ import {
   Activity,
   ArrowUpRight,
   Building2,
+  BriefcaseBusiness,
   Bot,
   BrainCircuit,
   CalendarClock,
@@ -86,6 +87,7 @@ const navGroups: { label: string; items: { id: View; label: string; icon: Lucide
       { id: "employees", label: "Employees", icon: Bot },
       { id: "knowledge", label: "Knowledge", icon: BrainCircuit },
       { id: "people", label: "People", icon: Users },
+      { id: "pipeline", label: "Pipeline", icon: BriefcaseBusiness },
       { id: "lead-data", label: "Lead Data", icon: Search },
     ],
   },
@@ -127,6 +129,7 @@ const viewNames: Record<View, string> = {
   employees: "Employees",
   knowledge: "Knowledge",
   people: "People",
+  pipeline: "Pipeline",
   "lead-data": "Lead Data",
   content: "Content",
   lists: "Smart Lists",
@@ -141,11 +144,12 @@ const viewNames: Record<View, string> = {
   settings: "Settings",
 };
 
-const platformViewNames = new Set<PlatformViewName>(["company", "chat", "scheduled", "dashboard", "people", "lead-data", "campaigns", "keywords", "inbound", "apps"]);
+const platformViewNames = new Set<PlatformViewName>(["company", "chat", "scheduled", "dashboard", "people", "pipeline", "lead-data", "campaigns", "keywords", "inbound", "apps"]);
 
 function navCount(view: View, state: WorkspaceState) {
   if (view === "employees") return state.employees.length;
   if (view === "people") return state.people.length || null;
+  if (view === "pipeline") return state.deals.filter((deal) => !["won", "lost"].includes(deal.stage)).length || null;
   if (view === "scheduled") return state.schedules.filter((schedule) => schedule.active).length || null;
   if (view === "campaigns") return state.campaigns.filter((campaign) => campaign.status !== "completed").length || null;
   if (view === "keywords") return state.keywordMonitors.filter((monitor) => monitor.status === "active").length || null;

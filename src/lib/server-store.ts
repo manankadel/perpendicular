@@ -43,6 +43,7 @@ function needsWorkspaceMigration(state: WorkspaceState) {
     || !Array.isArray(candidate.members)
     || !Array.isArray(candidate.schedules)
     || !Array.isArray(candidate.people)
+    || !Array.isArray(candidate.deals)
     || !Array.isArray(candidate.leadSources)
     || !Array.isArray(candidate.campaigns)
     || !Array.isArray(candidate.keywordMonitors)
