@@ -108,6 +108,20 @@ test("Google sign-in stays product-owned and uses a safe return path", () => {
   assert.match(login, /api\/auth\/google\/start/);
 });
 
+test("the product-owned auth surface supports self-serve account creation", () => {
+  const signup = readFileSync(join(root, "src/app/api/auth/signup/route.ts"), "utf8");
+  const authProxy = readFileSync(join(root, "src/lib/auth-proxy.ts"), "utf8");
+  const login = readFileSync(join(root, "src/components/PerpendicularLogin.tsx"), "utf8");
+  const identity = readFileSync(join(root, "src/lib/identity.ts"), "utf8");
+  assert.match(signup, /proxyIdentitySignupRequest/);
+  assert.match(authProxy, /identityApiUrl\("\/auth\/signup"\)/);
+  assert.match(authProxy, /productSlug: "perpendicular"/);
+  assert.match(authProxy, /bb_session/);
+  assert.match(login, /Create your workspace/);
+  assert.match(login, /api\/auth\/signup/);
+  assert.match(identity, /personalWorkspaceId/);
+});
+
 test("the known Vercel alias hands sessions to the canonical cookie origin in the browser", () => {
   const login = readFileSync(join(root, "src/components/PerpendicularLogin.tsx"), "utf8");
   const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");

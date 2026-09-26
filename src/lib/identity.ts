@@ -48,6 +48,11 @@ export function getAccessToken(request: Request) {
   return getCookie(request, "bb_session");
 }
 
+export function personalWorkspaceId(userId: string) {
+  const safeUserId = userId.trim().replace(/[^a-zA-Z0-9._-]/g, "_");
+  return safeUserId ? `personal-${safeUserId}` : null;
+}
+
 export function normalizeMemberships(value: unknown): IdentityMembership[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => {
@@ -161,7 +166,18 @@ export async function authenticateRequest(request: Request): Promise<IdentityCon
   const productMemberships = memberships.filter((membership) => membership.productSlug === productSlug);
   const resolvedMemberships = productMemberships.length > 0 ? productMemberships : await membershipsFromPortalSession(request, issuer, productSlug);
   if (resolvedMemberships.length === 0) {
-    throw new IdentityError("You do not have access to this product.", 403);
+    const personalId = personalWorkspaceId(String(payload.sub || ""));
+    if (!personalId) throw new IdentityError("Your identity is missing a user id.");
+    return {
+      userId: personalId,
+      email: typeof payload.email === "string" ? payload.email : "",
+      firstName: typeof payload.firstName === "string" ? payload.firstName : "",
+      lastName: typeof payload.lastName === "string" ? payload.lastName : "",
+      workspaceId: personalId,
+      organizationId: personalId,
+      role: "owner",
+      permissions: ["*"],
+    };
   }
 
   const requestedWorkspace = request.headers.get("x-company-id") || request.headers.get("x-organization-slug");

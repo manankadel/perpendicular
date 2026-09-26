@@ -12,6 +12,7 @@ export function sanitizeAuthPayload(value: unknown): AuthPayload {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { message: "Authentication service returned an invalid response." };
   const payload = { ...(value as AuthPayload) };
   delete payload.token;
+  delete payload.productJwt;
   return payload;
 }
 
@@ -54,6 +55,32 @@ function identityApiUrl(path: string) {
   return new URL(`/api/${path.replace(/^\/+/, "")}`, origin).toString();
 }
 
+function sessionCookie(token: string) {
+  const domain = process.env.COOKIE_DOMAIN || (process.env.NODE_ENV === "production" ? ".bluebloodstudio.com" : "");
+  return [
+    `bb_session=${encodeURIComponent(token)}`,
+    "Path=/",
+    "Max-Age=3600",
+    `Expires=${new Date(Date.now() + 3600 * 1000).toUTCString()}`,
+    ...(process.env.NODE_ENV === "production" ? ["Secure"] : []),
+    "HttpOnly",
+    "SameSite=Lax",
+    ...(domain ? [`Domain=${domain}`] : []),
+  ].join("; ");
+}
+
+async function identityResponse(request: Request, upstream: Response, parsed: unknown, extraCookies: string[] = []) {
+  const headers = new Headers({
+    ...corsHeadersFor(request),
+    "cache-control": "no-store",
+    "content-type": "application/json; charset=utf-8",
+    "x-content-type-options": "nosniff",
+  });
+  for (const cookie of getSetCookieHeaders(upstream.headers)) headers.append("set-cookie", cookie);
+  for (const cookie of extraCookies) headers.append("set-cookie", cookie);
+  return new Response(JSON.stringify(sanitizeAuthPayload(parsed)), { status: upstream.status, headers });
+}
+
 export async function proxyIdentityRequest(request: Request, path: string, allowedKeys: string[]) {
   let input: unknown = {};
   try {
@@ -77,12 +104,40 @@ export async function proxyIdentityRequest(request: Request, path: string, allow
   } catch {
     parsed = { message: "Authentication service returned an invalid response." };
   }
-  const headers = new Headers({
-    ...corsHeadersFor(request),
-    "cache-control": "no-store",
-    "content-type": "application/json; charset=utf-8",
-    "x-content-type-options": "nosniff",
+  return identityResponse(request, upstream, parsed);
+}
+
+export async function proxyIdentitySignupRequest(request: Request) {
+  let input: unknown = {};
+  try {
+    input = await request.json();
+  } catch {
+    input = {};
+  }
+  const source = input && typeof input === "object" && !Array.isArray(input) ? input as AuthPayload : {};
+  const body = {
+    email: source.email,
+    password: source.password,
+    firstName: source.firstName,
+    lastName: source.lastName,
+    productSlug: "perpendicular",
+  };
+  const upstream = await fetch(identityApiUrl("/auth/signup"), {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store",
+    redirect: "manual",
   });
-  for (const cookie of getSetCookieHeaders(upstream.headers)) headers.append("set-cookie", cookie);
-  return new Response(JSON.stringify(sanitizeAuthPayload(parsed)), { status: upstream.status, headers });
+  const raw = await upstream.text();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = { message: "Authentication service returned an invalid response." };
+  }
+  const productJwt = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as AuthPayload).productJwt
+    : null;
+  return identityResponse(request, upstream, parsed, typeof productJwt === "string" ? [sessionCookie(productJwt)] : []);
 }

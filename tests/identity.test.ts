@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getAccessToken, getLoginUrl, normalizeMemberships } from "../src/lib/identity";
+import { getAccessToken, getLoginUrl, normalizeMemberships, personalWorkspaceId } from "../src/lib/identity";
 
 test("reads bearer tokens before cookies", () => {
   const request = new Request("https://perpendicular.test/api/workspace", {
@@ -34,4 +34,9 @@ test("returns the product-owned login surface", () => {
   assert.equal(getLoginUrl(new Request("https://perpendicular-api.bluebloodstudio.com/api/workspace")), "https://perpendicular.bluebloodstudio.com/login?next=%2F");
   if (previous === undefined) delete process.env.PERPENDICULAR_WEB_ORIGIN;
   else process.env.PERPENDICULAR_WEB_ORIGIN = previous;
+});
+
+test("derives a stable private workspace for a valid user without a product membership", () => {
+  assert.equal(personalWorkspaceId("user-42"), "personal-user-42");
+  assert.equal(personalWorkspaceId(""), null);
 });

@@ -12,7 +12,7 @@ test("only accepts same-site relative return paths", () => {
 });
 
 test("removes identity tokens before returning auth responses to the browser", () => {
-  assert.deepEqual(sanitizeAuthPayload({ message: "Authentication Passed", token: "secret", user: { id: 11 }, requiresMfa: false }), {
+  assert.deepEqual(sanitizeAuthPayload({ message: "Authentication Passed", token: "secret", productJwt: "secret-too", user: { id: 11 }, requiresMfa: false }), {
     message: "Authentication Passed",
     user: { id: 11 },
     requiresMfa: false,
