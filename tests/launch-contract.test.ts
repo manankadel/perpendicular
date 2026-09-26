@@ -164,6 +164,7 @@ test("the known Vercel alias hands sessions to the canonical cookie origin in th
   assert.match(login, /perpendicular-nine\.vercel\.app/);
   assert.match(login, /NEXT_PUBLIC_CANONICAL_URL/);
   assert.match(console, /window\.location\.replace/);
+  assert.match(console, /setSelectedEmployeeId\(\(currentId\)/);
 });
 
 test("Gmail sync has a workspace-scoped inbox read surface", () => {

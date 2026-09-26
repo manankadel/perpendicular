@@ -752,6 +752,7 @@ export default function PerpendicularConsole() {
         }
         if (!response.ok) throw new Error(data.error || "Workspace failed to load.");
         setViewer(data.viewer || null);
+        if (data.employees?.length) setSelectedEmployeeId((currentId) => data.employees.some((employee) => employee.id === currentId) ? currentId : data.employees[0].id);
         return data;
       })
         .then((nextState) => { if (nextState) setState(nextState); })
