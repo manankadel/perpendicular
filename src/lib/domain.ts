@@ -1250,6 +1250,23 @@ export function buildOnboardingArtifacts(args: {
     createdAt,
     updatedAt: createdAt,
   }];
+  const sequence: Sequence = {
+    id: createId("seq"),
+    name: `${args.companyName} first conversation`,
+    status: "draft",
+    audience: "Ideal customer profile from company discovery",
+    enrolled: 0,
+    sent: 0,
+    replied: 0,
+    booked: 0,
+    steps: [
+      { id: createId("step"), channel: "Email", title: "Specific observation", delay: "Day 0", subject: `A useful observation about {{companyName}}`, body: `Hi {{firstName}} — I noticed {{companyName}} may be working through a problem related to ${args.goal}. I wrote down one specific observation from the public context. If it is useful, I can send it over.` },
+      { id: createId("step"), channel: "Email", title: "Useful follow-up", delay: "Day 3", subject: "One practical follow-up", body: "Sharing the smallest useful next step, not a generic pitch. I will pause if this is not relevant." },
+      { id: createId("step"), channel: "Task", title: "Review reply", delay: "Day 5", body: "Review any reply, attach the evidence, and decide whether to continue or suppress the contact." },
+      { id: createId("step"), channel: "Email", title: "Proof point", delay: "Day 7", subject: "The proof point", body: "Close the loop with one concrete proof point from the workspace and a low-friction next step." },
+      { id: createId("step"), channel: "Email", title: "Final nudge", delay: "Day 10", subject: "Should I close the loop?", body: "A final, respectful check-in. Stop the sequence if the contact replies or asks not to be contacted." },
+    ],
+  };
   const profile: WorkspaceProfile = {
     industry: "To be confirmed from company context",
     website: args.discovery.url,
@@ -1266,6 +1283,7 @@ export function buildOnboardingArtifacts(args: {
     document,
     missions,
     content,
+    sequence,
     profile,
     playbooks: defaultPlaybooks(),
     task: goalDetails.task,

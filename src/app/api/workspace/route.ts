@@ -237,6 +237,7 @@ async function postWorkspace(request: Request): Promise<Response> {
         state.documents.unshift({ ...artifacts.document, employeeIds: artifacts.employees.map((employee) => employee.id) });
         state.missions.unshift(...artifacts.missions);
         state.content.unshift(...artifacts.content);
+        state.sequences.unshift(artifacts.sequence);
         state.playbooks = state.playbooks.length ? state.playbooks : artifacts.playbooks;
         state.workspace.onboarding = {
           ...createOnboardingState("ready"),
@@ -251,7 +252,7 @@ async function postWorkspace(request: Request): Promise<Response> {
           missionIds: artifacts.missions.map((mission) => mission.id),
           contentIds: artifacts.content.map((item) => item.id),
         };
-        addActivity(state, { type: "system", title: `${companyName} was discovered`, detail: `${artifacts.document.name} indexed · ${artifacts.employees.length} operators and ${artifacts.missions.length} missions are ready`, });
+        addActivity(state, { type: "system", title: `${companyName} was discovered`, detail: `${artifacts.document.name} indexed · ${artifacts.employees.length} operators, ${artifacts.missions.length} missions, and a draft sequence are ready`, });
         return state;
       });
       try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.bootstrap", metadata: { goal, source: discovery.url ? "public_url" : "operator_brief" } }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The workspace was created, but its audit record could not be stored." }, { status: 503 }); }

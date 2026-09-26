@@ -88,6 +88,9 @@ test("onboarding builds a source, an operator pod, and executable work", () => {
   assert.equal(result.employees.length, 4);
   assert.equal(result.missions.length, 4);
   assert.equal(result.content.length, 1);
+  assert.equal(result.sequence.status, "draft");
+  assert.equal(result.sequence.steps.length, 5);
+  assert.ok(result.sequence.steps.every((step) => step.channel === "Email" || step.channel === "Task"));
   assert.ok(result.employees.every((employee) => employee.tools && employee.tools.length > 0));
   assert.ok(result.missions.every((mission) => mission.sourceDocumentIds.includes(result.document.id)));
   assert.equal(result.document.source, "url");
