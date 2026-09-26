@@ -135,6 +135,14 @@ test("API key creation only accepts supported scopes", () => {
   assert.match(route, /Choose at least one supported scope/);
 });
 
+test("API key creation returns the metadata required by the Settings key list", () => {
+  const apiKeys = readFileSync(join(root, "src/lib/api-keys.ts"), "utf8");
+  const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
+  assert.match(apiKeys, /return \{ id, secret, name: args\.name, keyPrefix, scopes: args\.scopes, createdAt, lastUsedAt: null \}/);
+  assert.match(console, /payload\.keyPrefix/);
+  assert.match(console, /payload\.scopes/);
+});
+
 test("Google sign-in stays product-owned and uses a safe return path", () => {
   const route = readFileSync(join(root, "src/app/api/auth/google/start/route.ts"), "utf8");
   const login = readFileSync(join(root, "src/components/PerpendicularLogin.tsx"), "utf8");

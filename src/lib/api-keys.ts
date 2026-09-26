@@ -26,13 +26,15 @@ export class ApiKeyRateLimitError extends Error {
 export async function createApiKey(args: { workspaceId: string; createdBy: string; name: string; scopes: string[] }) {
   const secret = `pp_live_${randomToken(32)}`;
   const id = `key_${randomToken(12)}`;
+  const keyPrefix = secret.slice(0, 18);
+  const createdAt = new Date().toISOString();
   await query(
     `insert into perpendicular_api_keys
       (id, workspace_id, created_by, name, key_prefix, key_hash, scopes)
      values ($1, $2, $3, $4, $5, $6, $7)`,
-    [id, args.workspaceId, args.createdBy, args.name, secret.slice(0, 18), sha256(secret), args.scopes],
+    [id, args.workspaceId, args.createdBy, args.name, keyPrefix, sha256(secret), args.scopes],
   );
-  return { id, secret };
+  return { id, secret, name: args.name, keyPrefix, scopes: args.scopes, createdAt, lastUsedAt: null };
 }
 
 export async function listApiKeys(workspaceId: string): Promise<ApiKeyRecord[]> {
