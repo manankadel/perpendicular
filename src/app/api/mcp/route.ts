@@ -8,6 +8,7 @@ import { recordUsage } from "@/lib/usage";
 import { workspaceStateForClient } from "@/lib/workspace-view";
 import { executeWorkspaceApp } from "@/lib/app-runtime";
 import { executeWorkspacePlaybook } from "@/lib/playbook-runtime";
+import { executeTicketReplyDraft } from "@/lib/ticket-runtime";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -22,6 +23,7 @@ const tools = [
   { name: "mission_approve", description: "Approve a mission result and mark it completed.", inputSchema: { type: "object", required: ["missionId"], properties: { missionId: { type: "string" } } } },
   { name: "content_generate", description: "Generate a grounded content draft and leave it waiting for review.", inputSchema: { type: "object", required: ["contentId"], properties: { contentId: { type: "string" } } } },
   { name: "content_approve", description: "Approve a generated content item.", inputSchema: { type: "object", required: ["contentId"], properties: { contentId: { type: "string" } } } },
+  { name: "ticket_reply_draft", description: "Draft a grounded support reply, persist it on the ticket, and leave external sending to a human/provider action.", inputSchema: { type: "object", required: ["ticketId"], properties: { ticketId: { type: "string" }, employeeId: { type: "string" } } } },
   { name: "integrations_list", description: "List connected integration metadata without secrets.", inputSchema: { type: "object", properties: {} } },
 ];
 
@@ -90,6 +92,13 @@ export async function POST(request: Request) {
       try { await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.playbook_run", resourceType: "playbook", resourceId: execution.playbook.id, metadata: { runId: execution.run.id, missionId: execution.mission.id } }); } catch { if (process.env.NODE_ENV === "production") return persistedFailure(id, execution.state, "The playbook run was saved, but its audit record could not be stored."); }
       try { await recordUsage({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, feature: "playbook_run", unit: "ai", units: 2, provider: execution.result.provider }); } catch { if (process.env.NODE_ENV === "production") return persistedFailure(id, execution.state, "The playbook run was saved, but its usage record could not be stored."); }
       return respond({ jsonrpc: "2.0", id, result: result({ output: execution.run.output, provider: execution.result.provider, playbook: execution.playbook, mission: execution.mission, run: execution.run, state: workspaceStateForClient(execution.state) }) });
+    }
+    if (name === "ticket_reply_draft") {
+      if (!hasPermission(identity.context, "workspace:write")) throw new Error("Permission denied.");
+      const execution = await executeTicketReplyDraft({ workspaceId: identity.context.workspaceId, ticketId: String(args.ticketId || ""), employeeId: String(args.employeeId || "").trim() || undefined, source: "mcp" });
+      try { await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.ticket_reply_draft", resourceType: "ticket", resourceId: execution.ticket.id, metadata: { employeeId: execution.employee.id } }); } catch { if (process.env.NODE_ENV === "production") return persistedFailure(id, execution.state, "The reply draft was saved, but its audit record could not be stored."); }
+      try { await recordUsage({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, feature: "ticket_reply_draft", unit: "ai", units: 2, provider: execution.result.provider }); } catch { if (process.env.NODE_ENV === "production") return persistedFailure(id, execution.state, "The reply draft was saved, but its usage record could not be stored."); }
+      return respond({ jsonrpc: "2.0", id, result: result({ output: execution.result.content, provider: execution.result.provider, ticket: execution.ticket, state: workspaceStateForClient(execution.state) }) });
     }
     if (name === "mission_run") {
       if (!hasPermission(identity.context, "workspace:write")) throw new Error("Permission denied.");
