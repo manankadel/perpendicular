@@ -314,6 +314,8 @@ export type Campaign = {
   scheduledAt: string | null;
   contentId: string | null;
   listId: string | null;
+  subject?: string | null;
+  body?: string | null;
   lastRunAt?: string | null;
   lastResult?: string | null;
   createdAt: string;
@@ -758,7 +760,13 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
     people: Array.isArray(state.people) ? state.people : [],
     deals,
     leadSources: Array.isArray(state.leadSources) ? state.leadSources : [],
-    campaigns: Array.isArray(state.campaigns) ? state.campaigns : [],
+    campaigns: Array.isArray(state.campaigns) ? state.campaigns.map((campaign) => ({
+      ...campaign,
+      subject: typeof campaign.subject === "string" ? campaign.subject : null,
+      body: typeof campaign.body === "string" ? campaign.body : null,
+      lastRunAt: campaign.lastRunAt ?? null,
+      lastResult: campaign.lastResult ?? null,
+    })) : [],
     keywordMonitors: Array.isArray(state.keywordMonitors) ? state.keywordMonitors : [],
     inboundAgents: launchAgents,
     sites: launchSites,

@@ -17,6 +17,7 @@ export function scheduleCampaignInState(state: WorkspaceState, campaignId: strin
   const campaign = findCampaign(state, campaignId);
   if (!campaign) throw new Error("Campaign not found.");
   if (campaign.status !== "draft") throw new Error("Only draft campaigns can be scheduled.");
+  if (campaign.type !== "content") throw new Error("Only native content campaigns can be scheduled. Broadcasts require an explicit Gmail send.");
   const content = attachedContent(state, campaign);
   if (!["approved", "scheduled"].includes(content.status)) throw new Error("Approve the campaign content before scheduling it.");
   const date = scheduledAt ? new Date(scheduledAt) : new Date(Date.now() + 60 * 60 * 1000);

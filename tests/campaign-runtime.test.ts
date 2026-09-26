@@ -17,3 +17,11 @@ test("native content campaigns schedule and complete through a public page", () 
   assert.equal(campaign.lastResult, "Published /site/campaign-page");
   assert.equal(state.content[0]?.status, "published");
 });
+
+test("broadcast campaigns cannot enter the native scheduler", () => {
+  const state = createInitialState("broadcast-campaign-test");
+  const createdAt = new Date().toISOString();
+  const campaign: Campaign = { id: "campaign-broadcast", name: "Product update", type: "broadcast", audience: "Founders", status: "draft", scheduledAt: null, contentId: null, listId: "list-growth", subject: "A useful update", body: "Hello {{firstName}}", createdAt, updatedAt: createdAt };
+  state.campaigns = [campaign];
+  assert.throws(() => scheduleCampaignInState(state, campaign.id), /explicit Gmail send/);
+});

@@ -50,6 +50,7 @@ import { executeTicketReplySend } from "@/lib/ticket-send-runtime";
 import { createDealInState, updateDealInState } from "@/lib/deal-runtime";
 import { publishContentInState, scheduleContentInState } from "@/lib/content-runtime";
 import { scheduleCampaignInState } from "@/lib/campaign-runtime";
+import { executeCampaignBroadcast } from "@/lib/campaign-send-runtime";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -378,6 +379,19 @@ async function postWorkspace(request: Request): Promise<Response> {
       } catch (error) {
         const message = error instanceof Error ? error.message : "Gmail ticket reply failed.";
         const status = message === "Ticket not found." ? 404 : message.includes("daily send limit") ? 429 : message.includes("unknown provider outcome") || message.includes("already in progress") ? 409 : message.includes("could not be checked") || message.includes("could not persist") ? 503 : 400;
+        return json({ error: message }, { status });
+      }
+    }
+
+    if (action === "send-campaign") {
+      try {
+        const execution = await executeCampaignBroadcast({ workspaceId: companyId, campaignId: String(body.campaignId || ""), senderEmail: identity.context.email });
+        let auditRecorded = true;
+        try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.campaign_broadcast_sent", resourceType: "campaign", resourceId: execution.campaign.id, metadata: execution.delivery }); } catch { auditRecorded = false; }
+        return json({ state: workspaceStateForClient(execution.state), campaign: execution.campaign, delivery: { ...execution.delivery, auditRecorded } }, { headers: rateLimitHeaders(identity.context) });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Campaign broadcast failed.";
+        const status = message === "Campaign not found." ? 404 : message.includes("already") ? 409 : message.includes("daily send limit") ? 429 : message.includes("unavailable") ? 503 : 400;
         return json({ error: message }, { status });
       }
     }
@@ -1253,7 +1267,12 @@ async function postWorkspace(request: Request): Promise<Response> {
           const name = String(body.name || "").trim();
           if (!name) throw new Error("Campaign name is required.");
           const type = (["broadcast", "content", "event"] as const).includes(body.type as never) ? body.type as Campaign["type"] : "content";
-          const campaign: Campaign = { id: createId("campaign"), name, type, audience: String(body.audience || "Workspace audience").trim(), status: "draft", scheduledAt: null, contentId: String(body.contentId || "").trim() || null, listId: String(body.listId || "").trim() || null, createdAt: timestamp(), updatedAt: timestamp() };
+          if (type === "broadcast") {
+            if (!String(body.listId || "").trim()) throw new Error("Choose a Smart List for a broadcast campaign.");
+            if (!String(body.subject || "").trim() || !String(body.body || "").trim()) throw new Error("Broadcast campaigns need a subject and body.");
+          }
+          if (type === "event") throw new Error("Event campaigns are not executable in the open-source launch scope.");
+          const campaign: Campaign = { id: createId("campaign"), name, type, audience: String(body.audience || "Workspace audience").trim(), status: "draft", scheduledAt: null, contentId: String(body.contentId || "").trim() || null, listId: String(body.listId || "").trim() || null, subject: String(body.subject || "").trim() || null, body: String(body.body || "").trim() || null, createdAt: timestamp(), updatedAt: timestamp() };
           state.campaigns.unshift(campaign);
           addActivity(state, { type: "content", title: `${name} was created`, detail: `${type} campaign · draft` });
           return state;
