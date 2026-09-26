@@ -18,5 +18,5 @@ fi
 install -m 0750 -o root -g root "$script_dir/backup-postgres.sh" "$backup_path"
 existing="$(crontab -l 2>/dev/null || true)"
 without_backup="$(printf '%s\n' "$existing" | sed '/\/opt\/blueblood\/backup-postgres\.sh/d')"
-printf '%s\n15 2 * * * %s\n' "$without_backup" "$backup_path" | crontab -
+printf '%s\n15 2 * * * %s %s\n' "$without_backup" "$backup_path" "$env_file" | crontab -
 echo "Installed Perpendicular daily backup cron using $env_file."

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly env_file="/opt/blueblood/perpendicular.env"
+readonly env_file="${1:-/opt/blueblood/perpendicular.env}"
 readonly compose_base="/opt/blueblood/docker-compose.yml"
 
 if [[ ! -f "$compose_base" || ! -f "$env_file" ]]; then

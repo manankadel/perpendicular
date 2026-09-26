@@ -37,11 +37,13 @@ test("Dell backup installation loads the env file and schedules a verified dump"
   const backup = readFileSync(join(root, "deploy/dell/backup-postgres.sh"), "utf8");
   const installer = readFileSync(join(root, "deploy/dell/install-backup-cron.sh"), "utf8");
   const deployReadme = readFileSync(join(root, "deploy/dell/README.md"), "utf8");
+  assert.match(backup, /env_file="\$\{1:-\/opt\/blueblood\/perpendicular\.env\}"/);
   assert.match(backup, /source "\$env_file"/);
   assert.match(backup, /PERPENDICULAR_BACKUP_REMOTE/);
   assert.match(backup, /pg_restore --list/);
   assert.match(installer, /\/opt\/blueblood\/backup-postgres\.sh/);
   assert.match(installer, /15 2 \* \* \*/);
+  assert.match(installer, /"\$backup_path" "\$env_file"/);
   assert.doesNotMatch(installer, /CRON_SECRET|Authorization: Bearer/);
   assert.match(deployReadme, /install-backup-cron\.sh/);
 });
