@@ -1325,7 +1325,10 @@ async function postWorkspace(request: Request): Promise<Response> {
           const headline = String(body.headline || "").trim();
           if (!name || !headline) throw new Error("Site name and headline are required.");
           const kind = body.kind === "landing_page" ? "landing_page" : "website";
-          const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || createId("site");
+          const baseSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || createId("site");
+          let slug = baseSlug;
+          let collision = 2;
+          while (state.sites.some((site) => site.slug === slug)) slug = `${baseSlug}-${collision++}`;
           const agentId = String(body.agentId || "").trim() || state.inboundAgents.find((agent) => agent.status === "live")?.id || null;
           const site: SiteRecord = { id: createId("site"), name, kind, slug, agentId, status: "draft", headline, body: String(body.body || "").trim(), createdAt: timestamp(), updatedAt: timestamp() };
           state.sites.unshift(site);
