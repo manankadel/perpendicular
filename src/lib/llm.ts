@@ -2,7 +2,12 @@ import "server-only";
 
 import { buildFallbackReply, findRelevantDocuments, type Employee, type DocumentRecord } from "@/lib/domain";
 
-type LlmResult = { content: string; citations: string[]; provider: "ollama" | "local fallback" };
+export type LlmResult = {
+  content: string;
+  citations: string[];
+  provider: "ollama" | "local fallback";
+  timings: { retrievalDurationMs: number; workerDurationMs: number };
+};
 
 export class LlmError extends Error {
   constructor(message: string) {
@@ -20,13 +25,16 @@ export async function generateEmployeeReply(
   message: string,
   documents: DocumentRecord[],
 ): Promise<LlmResult> {
+  const retrievalStartedAt = Date.now();
   const relevant = findRelevantDocuments(documents, message);
+  const retrievalDurationMs = Math.max(0, Date.now() - retrievalStartedAt);
   const citations = relevant.length > 0 ? relevant.map((document) => document.name) : ["Employee system prompt"];
   const baseUrl = (process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434").replace(/\/$/, "");
   const model = process.env.OLLAMA_MODEL || "qwen2.5:3b";
   const configuredTimeout = Number(process.env.OLLAMA_TIMEOUT_MS || "60000");
   const timeoutMs = Number.isFinite(configuredTimeout) ? Math.min(Math.max(configuredTimeout, 5000), 120000) : 60000;
   const context = relevant.map((document) => `SOURCE: ${document.name}\n${trimForPrompt(document.content)}`).join("\n\n");
+  const workerStartedAt = Date.now();
 
   if (process.env.DISABLE_OLLAMA !== "true") {
     const controller = new AbortController();
@@ -51,7 +59,7 @@ export async function generateEmployeeReply(
       if (response.ok) {
         const payload = (await response.json()) as { message?: { content?: string } };
         const content = payload.message?.content?.trim();
-        if (content) return { content, citations, provider: "ollama" };
+        if (content) return { content, citations, provider: "ollama", timings: { retrievalDurationMs, workerDurationMs: Math.max(0, Date.now() - workerStartedAt) } };
       }
     } catch {
       // Offline fallback is intentional: the product must stay usable without a model daemon.
@@ -64,5 +72,5 @@ export async function generateEmployeeReply(
     throw new LlmError("The local model is unavailable. Start Ollama on the Dell before running an employee.");
   }
   const fallback = buildFallbackReply(employee, message, documents);
-  return { ...fallback, provider: "local fallback" };
+  return { ...fallback, provider: "local fallback", timings: { retrievalDurationMs, workerDurationMs: Math.max(0, Date.now() - workerStartedAt) } };
 }

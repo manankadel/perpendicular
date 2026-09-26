@@ -44,8 +44,11 @@ export async function POST(request: Request) {
           if (!employee || !currentSchedule?.enabled) return workspace;
           if (workspace.workspace.aiCredits.remaining < 2) throw new Error("Not enough AI Credits for heartbeat work.");
           const task = currentSchedule.task || "Review the workspace and write the highest-leverage next action.";
+          const startedAt = Date.now();
           const result = await generateEmployeeReply(employee, task, workspace.documents);
+          const scoringStartedAt = Date.now();
           const score = scoreRun(task, result.content);
+          const scoringDurationMs = Math.max(0, Date.now() - scoringStartedAt);
           const createdAt = timestamp();
           workspace.runs.unshift({
             id: createId("run"),
@@ -57,12 +60,12 @@ export async function POST(request: Request) {
             reason: "Heartbeat run completed with local context and an independent score.",
             status: "completed",
             createdAt,
-            durationMs: 1650,
+            durationMs: Math.max(1, Date.now() - startedAt),
             trace: [
-              { label: "Memory", detail: "Loaded yesterday's log", durationMs: 12, cost: 0, status: "complete" },
-              { label: "Knowledge", detail: "Retrieved scoped context", durationMs: 34, cost: 0, status: "complete" },
-              { label: "Worker", detail: `${employee.model} · ${result.provider}`, durationMs: 1450, cost: 1, status: "complete" },
-              { label: "Evaluator", detail: "Independent score", durationMs: 154, cost: 1, status: "complete" },
+              { label: "Memory", detail: "Loaded workspace state", durationMs: 0, cost: 0, status: "complete" },
+              { label: "Knowledge", detail: `${result.citations.length} scoped source${result.citations.length === 1 ? "" : "s"} considered`, durationMs: result.timings.retrievalDurationMs, cost: 0, status: "complete" },
+              { label: "Worker", detail: `${employee.model} · ${result.provider}`, durationMs: result.timings.workerDurationMs, cost: 1, status: "complete" },
+              { label: "Evaluator", detail: "Independent rubric score", durationMs: scoringDurationMs, cost: 1, status: "complete" },
             ],
           });
           employee.score = Math.round(employee.score * 0.65 + score * 0.35);

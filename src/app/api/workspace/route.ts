@@ -14,7 +14,7 @@ import {
   type Mission,
   type WorkspaceState,
 } from "@/lib/domain";
-import { generateEmployeeReply } from "@/lib/llm";
+import { generateEmployeeReply, type LlmResult } from "@/lib/llm";
 import { getWorkspace, updateWorkspace } from "@/lib/server-store";
 import { authenticateRequest, getLoginUrl, IdentityError, type IdentityContext } from "@/lib/identity";
 import { hasPermission, rateLimitHeaders, rejectCrossOrigin } from "@/lib/route-auth";
@@ -73,26 +73,28 @@ function findContent(state: WorkspaceState, contentId: string) {
   return state.content.find((item) => item.id === contentId);
 }
 
-function makeRun(state: WorkspaceState, employee: Employee, task: string, trigger: "manual" | "heartbeat" | "evaluation", output: string) {
-  const score = scoreRun(task, output);
+function makeRun(state: WorkspaceState, employee: Employee, task: string, trigger: "manual" | "heartbeat" | "evaluation", result: LlmResult, startedAt: number) {
+  const scoringStartedAt = Date.now();
+  const score = scoreRun(task, result.content);
+  const scoringDurationMs = Math.max(0, Date.now() - scoringStartedAt);
   const run = {
     id: createId("run"),
     employeeId: employee.id,
     trigger,
     task,
-    output,
+    output: result.content,
     score,
     reason: trigger === "evaluation"
       ? "Golden test passed with a grounded answer and an explicit next action."
       : "The run used the employee prompt, retrieved context, and ended with an actionable owner.",
     status: "completed" as const,
     createdAt: timestamp(),
-    durationMs: 1700,
+    durationMs: Math.max(1, Date.now() - startedAt),
     trace: [
-      { label: "Memory", detail: "Loaded company context and previous run", durationMs: 12, cost: 0, status: "complete" as const },
-      { label: "Knowledge", detail: "Retrieved scoped workspace context", durationMs: 38, cost: 0, status: "complete" as const },
-      { label: "Worker", detail: `${employee.model} · local runtime`, durationMs: 1080, cost: 1, status: "complete" as const },
-      { label: "Evaluator", detail: "Independent rubric score", durationMs: 170, cost: 1, status: "complete" as const },
+      { label: "Memory", detail: "Loaded workspace state", durationMs: 0, cost: 0, status: "complete" as const },
+      { label: "Knowledge", detail: `${result.citations.length} scoped source${result.citations.length === 1 ? "" : "s"} considered`, durationMs: result.timings.retrievalDurationMs, cost: 0, status: "complete" as const },
+      { label: "Worker", detail: `${employee.model} · ${result.provider}`, durationMs: result.timings.workerDurationMs, cost: 1, status: "complete" as const },
+      { label: "Evaluator", detail: "Independent rubric score", durationMs: scoringDurationMs, cost: 1, status: "complete" as const },
     ],
   };
   state.runs.unshift(run);
@@ -330,13 +332,13 @@ async function postWorkspace(request: Request): Promise<Response> {
       if (onboarding.runId) return json(current);
       if (current.workspace.aiCredits.remaining < 2) return json({ error: "Not enough AI Credits for the first brief." }, { status: 402 });
       const task = employee.goldenTests[0]?.input || "Review the workspace and propose the three highest-leverage next actions for this week.";
+      const startedAt = Date.now();
       const result = await generateEmployeeReply(employee, task, current.documents);
       const next = await updateWorkspace(companyId, (state) => {
         if (state.workspace.onboarding.runId) return state;
         const liveEmployee = findEmployee(state, employee.id);
         if (!liveEmployee) return state;
-        const run = makeRun(state, liveEmployee, task, "manual", result.content);
-        run.trace[2].detail = `${liveEmployee.model} · ${result.provider}`;
+        const run = makeRun(state, liveEmployee, task, "manual", result, startedAt);
         state.workspace.onboarding.status = "proved";
         state.workspace.onboarding.runId = run.id;
         addActivity(state, { type: "run", title: `${liveEmployee.name} delivered the first brief`, detail: `Score ${run.score} · grounded in ${state.documents[0]?.name || "workspace context"}`, });
@@ -419,12 +421,12 @@ async function postWorkspace(request: Request): Promise<Response> {
       const task = mission
         ? `${mission.title}\n\nMission: ${mission.description}\n\nUse the workspace sources, state what is known, identify missing evidence, and finish with an owner and next action.`
         : `Create a ${content?.channel} draft titled "${content?.title}". Objective: ${content?.objective}. Use only the workspace context, preserve the company's voice, avoid unsupported claims, and return the draft plus one note about evidence that still needs review.`;
+      const startedAt = Date.now();
       const result = await generateEmployeeReply(employee, task, current.documents);
       const next = await updateWorkspace(companyId, (state) => {
         const liveEmployee = findEmployee(state, employee.id);
         if (!liveEmployee) return state;
-        const run = makeRun(state, liveEmployee, task, "manual", result.content);
-        run.trace[2].detail = `${liveEmployee.model} · ${result.provider}`;
+        const run = makeRun(state, liveEmployee, task, "manual", result, startedAt);
         if (mission) {
           const liveMission = findMission(state, mission.id);
           if (liveMission) {
@@ -657,9 +659,9 @@ async function postWorkspace(request: Request): Promise<Response> {
           const task = String(body.task || "").trim();
           if (!employee || !task) throw new Error("Employee and task are required.");
           if (state.workspace.aiCredits.remaining < 2) throw new Error("Not enough AI Credits for a run.");
+          const startedAt = Date.now();
           const result = await generateEmployeeReply(employee, task, state.documents);
-          const run = makeRun(state, employee, task, "manual", result.content);
-          run.trace[2].detail = `${employee.model} · ${result.provider}`;
+          const run = makeRun(state, employee, task, "manual", result, startedAt);
           addActivity(state, { type: "run", title: `${employee.name} completed a run`, detail: `Score ${run.score} · ${task}`, });
           return state;
         }
@@ -673,10 +675,10 @@ async function postWorkspace(request: Request): Promise<Response> {
             : employee.promptVersions.find((version) => version.active);
           if (requestedVersionId && !evaluatedVersion) throw new Error("Prompt version not found.");
           const task = employee.goldenTests[0]?.input || "Give your best recommendation.";
+          const startedAt = Date.now();
           const result = await generateEmployeeReply(evaluatedVersion ? { ...employee, systemPrompt: evaluatedVersion.prompt } : employee, task, state.documents);
-          const run = makeRun(state, employee, task, "evaluation", result.content);
-          run.trace[2].detail = `${employee.model} · ${result.provider}`;
-          employee.goldenTests = employee.goldenTests.map((test) => ({ ...test, lastScore: Math.max(78, Math.min(98, run.score + (test.id.length % 5) - 2)) }));
+          const run = makeRun(state, employee, task, "evaluation", result, startedAt);
+          employee.goldenTests = employee.goldenTests.map((test) => ({ ...test, lastScore: run.score }));
           if (evaluatedVersion) evaluatedVersion.goldenScore = run.score;
           if (!requestedVersionId) {
             const currentPrompt = evaluatedVersion?.prompt || employee.systemPrompt;
