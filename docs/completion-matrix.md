@@ -72,8 +72,8 @@ None of these are replaced with sample data or a green UI state.
 
 Read-only checks on 2026-09-26 found:
 
-- The live API is healthy on promoted immutable image `5157090`; the production smoke suite passed all eight checks, including the public widget entry route.
+- The live API is healthy on promoted immutable image `d2cd5e7` (`sha256:3f7238b91c3aa66aa4973e5749d1b72f2dda2ac3cc67ad28c2d571783b6cd792`); the production smoke suite passed all eight checks, including the public widget entry route.
 - Dell reports all required workspace, platform, Gmail event/health, usage-ledger, and outbound-message tables present; schema health has no missing tables.
-- The API-key rate-limit table is applied additively on Dell; the transactional workspace write path and public widget are live on the promoted image.
+- The API-key rate-limit table is applied additively on Dell; the transactional workspace write path, outbound safety guardrails, CSV lead import, and public widget are live on the promoted image.
 - Dell local backups exist and restore rehearsal passed, but the rclone configuration and offsite remote are absent.
 - Product-owned Google sign-in/MFA and Gmail OAuth have been verified in the live flow; the complete test-send → reply → sync → sequence-pause evidence is still outstanding.
