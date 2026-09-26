@@ -26,6 +26,13 @@ export function gmailRedirectUri() {
     || `${process.env.PERPENDICULAR_API_ORIGIN || "https://perpendicular-api.bluebloodstudio.com"}/api/integrations/google/callback`;
 }
 
+export class GmailSendError extends Error {
+  constructor(message: string, readonly safeToRetry: boolean) {
+    super(message);
+    this.name = "GmailSendError";
+  }
+}
+
 export function googleAuthorizeUrl(state: string, codeChallenge: string) {
   const { clientId } = googleCredentials();
   const params = new URLSearchParams({
@@ -115,16 +122,23 @@ export async function sendGmailMessage(workspaceId: string, args: { to: string; 
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(args.to)) throw new Error("A valid recipient email is required.");
   if (!args.subject.trim() || !args.body.trim()) throw new Error("Email subject and body are required.");
   const { connection, accessToken } = await accessTokenFor(workspaceId);
-  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
-    method: "POST",
-    headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
-    body: JSON.stringify({ raw: mimeMessage({ ...args, from: connection.accountEmail }) }),
-  });
+  let response: Response;
+  try {
+    response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+      method: "POST",
+      headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ raw: mimeMessage({ ...args, from: connection.accountEmail }) }),
+    });
+  } catch (error) {
+    throw new GmailSendError(error instanceof Error ? error.message : "Gmail could not be reached.", false);
+  }
   if (!response.ok) {
     if (response.status === 401) await markIntegrationStatus(workspaceId, "gmail", "degraded");
-    throw new Error(`Gmail rejected the message (${response.status}).`);
+    throw new GmailSendError(`Gmail rejected the message (${response.status}).`, response.status < 500);
   }
-  return await response.json() as { id?: string; threadId?: string };
+  const result = await response.json() as { id?: string; threadId?: string };
+  if (!result.id) throw new GmailSendError("Gmail returned no message id.", false);
+  return result;
 }
 
 export async function listRecentGmailMessages(workspaceId: string, maxResults = 25) {

@@ -108,6 +108,11 @@ export type SmartRow = {
   companyInsight: string;
   enrollmentStatus: "not enrolled" | "enrolled" | "replied";
   lastAction: string | null;
+  sequenceId?: string | null;
+  sequenceStepIndex?: number;
+  sequenceStatus?: "active" | "paused" | "replied" | "completed" | null;
+  lastSentAt?: string | null;
+  lastProviderMessageId?: string | null;
 };
 
 export type SmartList = {
@@ -124,6 +129,7 @@ export type Sequence = {
   status: "live" | "draft";
   audience: string;
   enrolled: number;
+  sent?: number;
   replied: number;
   booked: number;
   steps: SequenceStep[];
@@ -135,6 +141,7 @@ export type SequenceStep = {
   title: string;
   delay: string;
   body: string;
+  subject?: string;
 };
 
 export type Ticket = {
@@ -398,6 +405,21 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
           updatedAt: timestamp,
         }]
       : [];
+  const lists = (Array.isArray(state.lists) ? state.lists : []).map((list) => ({
+    ...list,
+    rows: list.rows.map((row) => ({
+      ...row,
+      sequenceId: row.sequenceId ?? null,
+      sequenceStepIndex: Number.isInteger(row.sequenceStepIndex) ? row.sequenceStepIndex : 0,
+      sequenceStatus: row.sequenceStatus ?? (row.enrollmentStatus === "replied" ? "replied" : row.enrollmentStatus === "enrolled" ? "active" : null),
+      lastSentAt: row.lastSentAt ?? null,
+      lastProviderMessageId: row.lastProviderMessageId ?? null,
+    })),
+  }));
+  const sequences = (Array.isArray(state.sequences) ? state.sequences : []).map((sequence) => ({
+    ...sequence,
+    sent: typeof sequence.sent === "number" && Number.isFinite(sequence.sent) ? sequence.sent : 0,
+  }));
   return {
     ...state,
     profile: state.profile || {
@@ -417,8 +439,8 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
     missions,
     content,
     playbooks: Array.isArray(state.playbooks) ? state.playbooks : defaultPlaybooks(),
-    lists: Array.isArray(state.lists) ? state.lists : [],
-    sequences: Array.isArray(state.sequences) ? state.sequences : [],
+    lists,
+    sequences,
     tickets: Array.isArray(state.tickets) ? state.tickets : [],
     activity: Array.isArray(state.activity) ? state.activity : [],
     suppressedEmails: Array.isArray(state.suppressedEmails) ? state.suppressedEmails.map((email) => email.toLowerCase()) : [],

@@ -16,6 +16,7 @@ const requiredTables = [
   "perpendicular_webhook_events",
   "perpendicular_integration_health",
   "perpendicular_usage_ledger",
+  "perpendicular_outbound_messages",
 ] as const;
 
 export async function GET() {

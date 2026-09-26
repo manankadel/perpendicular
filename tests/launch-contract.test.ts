@@ -12,6 +12,17 @@ test("the launch database contract includes additive usage accounting", () => {
   assert.match(readFileSync(join(root, "README.md"), "utf8"), /db\/004_usage_ledger\.sql/);
 });
 
+test("the launch database contract persists idempotent outbound sequence sends", () => {
+  const migration = readFileSync(join(root, "db/005_outbound_messages.sql"), "utf8");
+  const health = readFileSync(join(root, "src/app/api/health/route.ts"), "utf8");
+  const docs = readFileSync(join(root, "src/app/api/docs/route.ts"), "utf8");
+  assert.match(migration, /create table if not exists perpendicular_outbound_messages/);
+  assert.match(migration, /idempotency_key text not null unique/);
+  assert.match(migration, /status in \('sending', 'sent', 'failed', 'unknown'\)/);
+  assert.match(health, /perpendicular_outbound_messages/);
+  assert.match(docs, /send-sequence-step/);
+});
+
 test("the public API contract exposes usage and privacy controls", () => {
   const docs = readFileSync(join(root, "src/app/api/docs/route.ts"), "utf8");
   assert.match(docs, /\/api\/usage/);
@@ -147,6 +158,18 @@ test("sequence enrollment is blocked until Gmail is connected", () => {
   const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
   assert.match(route, /Connect Gmail before enrolling a lead in a sequence/);
   assert.match(console, /Connect Gmail to enroll/);
+});
+
+test("sequence sends require activation and are explicit Gmail mutations", () => {
+  const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
+  const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
+  assert.match(route, /action === "send-sequence-step"/);
+  assert.match(route, /sequence\.status !== "live"/);
+  assert.match(route, /claimOutboundMessage/);
+  assert.match(route, /sendGmailMessage/);
+  assert.match(route, /cannot receive sequence mail/);
+  assert.match(console, /Send approved email/);
+  assert.match(console, /Activate after review/);
 });
 
 test("public research does not follow unvalidated redirects or unbounded bodies", () => {

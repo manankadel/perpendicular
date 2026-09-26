@@ -19,6 +19,10 @@ import { getWorkspace, updateWorkspace } from "@/lib/server-store";
 import { authenticateRequest, getLoginUrl, IdentityError, type IdentityContext } from "@/lib/identity";
 import { hasPermission, rateLimitHeaders, rejectCrossOrigin } from "@/lib/route-auth";
 import { listIntegrationSummaries, recordAuditEvent } from "@/lib/integration-store";
+import { sendGmailMessage, GmailSendError } from "@/lib/gmail";
+import { upsertGmailMessage } from "@/lib/inbox-store";
+import { claimOutboundMessage, markOutboundFailed, markOutboundSent, markOutboundUnknown } from "@/lib/outbound-store";
+import { sequenceEmailFor, sequenceStepIdempotencyKey } from "@/lib/sequence";
 import { researchPersonCompany, researchWebsite } from "@/lib/public-research";
 import { corsHeadersFor } from "@/lib/cors";
 import { recordUsage } from "@/lib/usage";
@@ -117,6 +121,33 @@ function companyNameFromDiscovery(discovery: OnboardingDiscovery, fallbackUrl: s
     try { return companyNameFromUrl(fallbackUrl); } catch { /* fall through to the authenticated workspace slug */ }
   }
   return workspaceId.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()).slice(0, 100);
+}
+
+async function applySequenceDelivery(args: {
+  workspaceId: string;
+  rowId: string;
+  listId: string;
+  sequenceId: string;
+  stepIndex: number;
+  providerMessageId: string;
+  sentAt: string;
+}) {
+  return updateWorkspace(args.workspaceId, (state) => {
+    const list = state.lists.find((item) => item.id === args.listId);
+    const row = list?.rows.find((item) => item.id === args.rowId);
+    const sequence = state.sequences.find((item) => item.id === args.sequenceId);
+    if (!list || !row || !sequence) return state;
+    if (row.lastProviderMessageId === args.providerMessageId) return state;
+    row.sequenceId = sequence.id;
+    row.sequenceStepIndex = Math.max(row.sequenceStepIndex || 0, args.stepIndex + 1);
+    row.sequenceStatus = row.sequenceStepIndex >= sequence.steps.length ? "completed" : "active";
+    row.lastSentAt = args.sentAt;
+    row.lastProviderMessageId = args.providerMessageId;
+    row.lastAction = `Sent ${sequence.steps[args.stepIndex]?.title || "sequence step"} through Gmail`;
+    sequence.sent = (sequence.sent || 0) + 1;
+    addActivity(state, { type: "sequence", title: `${row.name} received ${sequence.name}`, detail: `${sequence.steps[args.stepIndex]?.title || "Email step"} sent through the connected Gmail mailbox`, });
+    return state;
+  });
 }
 
 function onboardingGoal(value: unknown): OnboardingGoal {
@@ -224,6 +255,65 @@ async function postWorkspace(request: Request): Promise<Response> {
       } catch {
         return json({ error: "Gmail connection status is unavailable. Apply the platform database migration." }, { status: 503 });
       }
+    }
+
+    if (action === "send-sequence-step") {
+      const listId = String(body.listId || "");
+      const rowId = String(body.rowId || "");
+      const sequenceId = String(body.sequenceId || "");
+      const current = await getWorkspace(companyId);
+      const list = current.lists.find((item) => item.id === listId);
+      const row = list?.rows.find((item) => item.id === rowId);
+      const sequence = current.sequences.find((item) => item.id === sequenceId);
+      const stepIndex = Number.isInteger(Number(body.stepIndex)) ? Number(body.stepIndex) : row?.sequenceStepIndex || 0;
+      const step = sequence?.steps[stepIndex];
+      if (!list || !row || !sequence || !step) return json({ error: "Lead, sequence, or sequence step not found." }, { status: 400 });
+      if (sequence.status !== "live") return json({ error: "Activate the sequence after reviewing its steps before sending." }, { status: 400 });
+      if (step.channel !== "Email") return json({ error: "Only Email sequence steps can be sent through Gmail." }, { status: 400 });
+      if (row.status !== "enriched") return json({ error: "Research the lead before sending." }, { status: 400 });
+      if (row.enrollmentStatus === "replied") return json({ error: "This sequence is paused because the lead replied." }, { status: 400 });
+      if (row.enrollmentStatus !== "enrolled") return json({ error: "Enroll the lead before sending a sequence step." }, { status: 400 });
+      if (row.sequenceId && row.sequenceId !== sequence.id) return json({ error: "This lead is enrolled in a different sequence." }, { status: 409 });
+      if ((row.sequenceStepIndex || 0) > stepIndex) return json({ error: "This sequence step has already been sent." }, { status: 409 });
+      if (current.suppressedEmails.includes(row.email.toLowerCase())) return json({ error: "This address is suppressed and cannot receive sequence mail." }, { status: 400 });
+      let integrations;
+      try { integrations = await listIntegrationSummaries(companyId); } catch { return json({ error: "Gmail connection status is unavailable. Apply the platform database migration." }, { status: 503 }); }
+      const gmail = integrations.find((integration) => integration.provider === "gmail");
+      if (gmail?.status !== "connected") return json({ error: "Connect Gmail before sending a sequence email." }, { status: 400 });
+      const email = sequenceEmailFor(sequence, step, row);
+      const idempotencyKey = sequenceStepIdempotencyKey(companyId, sequence.id, row.id, stepIndex);
+      const claimed = await claimOutboundMessage({ workspaceId: companyId, idempotencyKey, recipient: row.email, sequenceId: sequence.id, rowId: row.id, stepIndex, subject: email.subject, bodyText: email.body });
+      if (claimed.kind === "blocked") return json({ error: claimed.record.status === "unknown" ? "This send has an unknown provider outcome. Reconcile it before retrying." : "This send is already in progress. Refresh before retrying." }, { status: 409 });
+      if (claimed.kind === "sent") {
+        const reconciled = await applySequenceDelivery({ workspaceId: companyId, listId, rowId, sequenceId, stepIndex, providerMessageId: claimed.record.providerMessageId || "", sentAt: claimed.record.updatedAt });
+        return json({ ...reconciled, delivery: { status: "sent", messageId: claimed.record.providerMessageId, idempotent: true } }, { headers: rateLimitHeaders(identity.context) });
+      }
+      let sent: { id?: string; threadId?: string };
+      try {
+        sent = await sendGmailMessage(companyId, { to: row.email, subject: email.subject, body: email.body });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Gmail send failed.";
+        if (error instanceof GmailSendError && !error.safeToRetry) await markOutboundUnknown(claimed.record.id, message);
+        else await markOutboundFailed(claimed.record.id, message);
+        return json({ error: message }, { status: 400 });
+      }
+      if (!sent.id) {
+        await markOutboundUnknown(claimed.record.id, "Gmail returned no message id.");
+        return json({ error: "Gmail returned no message id. Do not retry until the mailbox is reconciled." }, { status: 502 });
+      }
+      await markOutboundSent(claimed.record.id, sent.id, sent.threadId || null);
+      const sentAt = timestamp();
+      const updated = await applySequenceDelivery({ workspaceId: companyId, listId, rowId, sequenceId, stepIndex, providerMessageId: sent.id, sentAt });
+      let inboxRecorded = false;
+      try {
+        if (sent.threadId) {
+          await upsertGmailMessage({ workspaceId: companyId, providerThreadId: sent.threadId, providerMessageId: sent.id, direction: "outbound", sender: gmail.accountEmail || identity.context.email, recipients: [row.email], subject: email.subject, bodyText: email.body, receivedAt: sentAt, metadata: { sequenceId: sequence.id, rowId: row.id, stepIndex } });
+          inboxRecorded = true;
+        }
+      } catch { /* The provider send remains durable even if inbox indexing is temporarily unavailable. */ }
+      let auditRecorded = true;
+      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "gmail.sequence_message_sent", resourceType: "outbound_message", resourceId: claimed.record.id, metadata: { sequenceId: sequence.id, rowId: row.id, stepIndex, providerMessageId: sent.id, recipient: row.email } }); } catch { auditRecorded = false; }
+      return json({ ...updated, delivery: { status: "sent", messageId: sent.id, threadId: sent.threadId || null, inboxRecorded, auditRecorded } }, { headers: rateLimitHeaders(identity.context) });
     }
 
     if (action === "run-onboarding-brief") {
@@ -541,8 +631,17 @@ async function postWorkspace(request: Request): Promise<Response> {
         case "create-sequence": {
           const name = String(body.name || "").trim();
           if (!name) throw new Error("Sequence name is required.");
-          state.sequences.unshift({ id: createId("seq"), name, status: "draft", audience: String(body.audience || "Imported leads"), enrolled: 0, replied: 0, booked: 0, steps: [{ id: createId("step"), channel: "Email", title: "First touch", delay: "Day 0", body: String(body.body || "Write a useful, specific first touch. Require human approval before sending.") }] });
+          state.sequences.unshift({ id: createId("seq"), name, status: "draft", audience: String(body.audience || "Imported leads"), enrolled: 0, sent: 0, replied: 0, booked: 0, steps: [{ id: createId("step"), channel: "Email", title: "First touch", delay: "Day 0", subject: String(body.subject || "").trim() || undefined, body: String(body.body || "Write a useful, specific first touch. Require human approval before sending.") }] });
           addActivity(state, { type: "sequence", title: `${name} was created`, detail: "Draft sequence · Gmail connection and approval required before sending", });
+          return state;
+        }
+        case "activate-sequence": {
+          const sequence = state.sequences.find((item) => item.id === String(body.sequenceId || ""));
+          if (!sequence) throw new Error("Sequence not found.");
+          if (!sequence.steps.length || sequence.steps.some((step) => !step.body.trim())) throw new Error("Every sequence step needs a message before activation.");
+          if (sequence.status === "live") return state;
+          sequence.status = "live";
+          addActivity(state, { type: "sequence", title: `${sequence.name} was activated`, detail: "Human-approved sequence · each outbound step still requires an explicit send", });
           return state;
         }
         case "run-employee": {
@@ -640,6 +739,11 @@ async function postWorkspace(request: Request): Promise<Response> {
           if (state.suppressedEmails.includes(row.email.toLowerCase())) throw new Error("This address is suppressed and cannot enter a sequence.");
           if (row.enrollmentStatus === "enrolled") return state;
           row.enrollmentStatus = "enrolled";
+          row.sequenceId = sequence.id;
+          row.sequenceStepIndex = 0;
+          row.sequenceStatus = "active";
+          row.lastSentAt = null;
+          row.lastProviderMessageId = null;
           row.lastAction = `Enrolled in ${sequence.name}`;
           sequence.enrolled += 1;
           addActivity(state, { type: "sequence", title: `${row.name} entered ${sequence.name}`, detail: "Reply-pause and suppression checks enabled", });
