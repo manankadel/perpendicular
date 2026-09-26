@@ -9,6 +9,7 @@ import { workspaceStateForClient } from "@/lib/workspace-view";
 import { executeWorkspaceApp } from "@/lib/app-runtime";
 import { executeWorkspacePlaybook } from "@/lib/playbook-runtime";
 import { executeTicketReplyDraft } from "@/lib/ticket-runtime";
+import { createWorkspaceDeal, updateWorkspaceDeal } from "@/lib/deal-runtime";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -24,6 +25,8 @@ const tools = [
   { name: "content_generate", description: "Generate a grounded content draft and leave it waiting for review.", inputSchema: { type: "object", required: ["contentId"], properties: { contentId: { type: "string" } } } },
   { name: "content_approve", description: "Approve a generated content item.", inputSchema: { type: "object", required: ["contentId"], properties: { contentId: { type: "string" } } } },
   { name: "ticket_reply_draft", description: "Draft a grounded support reply, persist it on the ticket, and leave external sending to a human/provider action.", inputSchema: { type: "object", required: ["ticketId"], properties: { ticketId: { type: "string" }, employeeId: { type: "string" } } } },
+  { name: "deal_create", description: "Create a workspace-scoped pipeline opportunity with value, stage, owner, source, and next action.", inputSchema: { type: "object", required: ["name", "company"], properties: { name: { type: "string" }, company: { type: "string" }, amount: { type: "number" }, stage: { type: "string" }, ownerEmployeeId: { type: "string" }, personId: { type: "string" }, source: { type: "string" }, nextAction: { type: "string" }, closeDate: { type: "string" }, notes: { type: "string" } } } },
+  { name: "deal_update", description: "Update a pipeline opportunity and append stage history when its stage changes.", inputSchema: { type: "object", required: ["dealId"], properties: { dealId: { type: "string" }, stage: { type: "string" }, stageNote: { type: "string" }, amount: { type: "number" }, ownerEmployeeId: { type: "string" }, nextAction: { type: "string" }, closeDate: { type: "string" }, notes: { type: "string" } } } },
   { name: "integrations_list", description: "List connected integration metadata without secrets.", inputSchema: { type: "object", properties: {} } },
 ];
 
@@ -99,6 +102,18 @@ export async function POST(request: Request) {
       try { await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.ticket_reply_draft", resourceType: "ticket", resourceId: execution.ticket.id, metadata: { employeeId: execution.employee.id } }); } catch { if (process.env.NODE_ENV === "production") return persistedFailure(id, execution.state, "The reply draft was saved, but its audit record could not be stored."); }
       try { await recordUsage({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, feature: "ticket_reply_draft", unit: "ai", units: 2, provider: execution.result.provider }); } catch { if (process.env.NODE_ENV === "production") return persistedFailure(id, execution.state, "The reply draft was saved, but its usage record could not be stored."); }
       return respond({ jsonrpc: "2.0", id, result: result({ output: execution.result.content, provider: execution.result.provider, ticket: execution.ticket, state: workspaceStateForClient(execution.state) }) });
+    }
+    if (name === "deal_create") {
+      if (!hasPermission(identity.context, "workspace:write")) throw new Error("Permission denied.");
+      const execution = await createWorkspaceDeal({ workspaceId: identity.context.workspaceId, input: { name: String(args.name || ""), company: String(args.company || ""), amount: Number(args.amount || 0), currency: String(args.currency || "USD"), stage: args.stage as never, personId: String(args.personId || "").trim() || null, ownerEmployeeId: String(args.ownerEmployeeId || "").trim() || null, source: String(args.source || "mcp"), nextAction: String(args.nextAction || ""), closeDate: args.closeDate ? String(args.closeDate) : null, notes: String(args.notes || "") } });
+      try { await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.deal_create", resourceType: "deal", resourceId: execution.deal.id }); } catch { if (process.env.NODE_ENV === "production") return persistedFailure(id, execution.state, "The deal was saved, but its audit record could not be stored."); }
+      return respond({ jsonrpc: "2.0", id, result: result({ deal: execution.deal, state: workspaceStateForClient(execution.state) }) });
+    }
+    if (name === "deal_update") {
+      if (!hasPermission(identity.context, "workspace:write")) throw new Error("Permission denied.");
+      const execution = await updateWorkspaceDeal({ workspaceId: identity.context.workspaceId, dealId: String(args.dealId || ""), input: { stage: args.stage as never, stageNote: String(args.stageNote || ""), amount: args.amount === undefined ? undefined : Number(args.amount), nextAction: args.nextAction === undefined ? undefined : String(args.nextAction || ""), closeDate: args.closeDate === undefined ? undefined : (args.closeDate ? String(args.closeDate) : null), notes: args.notes === undefined ? undefined : String(args.notes || ""), ownerEmployeeId: args.ownerEmployeeId === undefined ? undefined : (String(args.ownerEmployeeId || "").trim() || null) } });
+      try { await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.deal_update", resourceType: "deal", resourceId: execution.deal.id, metadata: { stage: execution.deal.stage } }); } catch { if (process.env.NODE_ENV === "production") return persistedFailure(id, execution.state, "The deal was updated, but its audit record could not be stored."); }
+      return respond({ jsonrpc: "2.0", id, result: result({ deal: execution.deal, state: workspaceStateForClient(execution.state) }) });
     }
     if (name === "mission_run") {
       if (!hasPermission(identity.context, "workspace:write")) throw new Error("Permission denied.");

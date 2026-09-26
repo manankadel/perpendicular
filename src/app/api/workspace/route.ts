@@ -4,7 +4,6 @@ import {
   buildOnboardingArtifacts,
   createId,
   createOnboardingState,
-  dealProbability,
   scoreRun,
   recordEmployeeScore,
   timestamp,
@@ -14,8 +13,6 @@ import {
   type ContentItem,
   type AppRecord,
   type Campaign,
-  type DealStage,
-  type DealRecord,
   type Employee,
   type InboundAgent,
   type KeywordMonitor,
@@ -49,6 +46,7 @@ import { nextAllowedScheduleAt, nextScheduleAt, scheduleExecutionTask } from "@/
 import { executeWorkspaceApp } from "@/lib/app-runtime";
 import { executeWorkspacePlaybook } from "@/lib/playbook-runtime";
 import { executeTicketReplyDraft } from "@/lib/ticket-runtime";
+import { createDealInState, updateDealInState } from "@/lib/deal-runtime";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -774,64 +772,11 @@ async function postWorkspace(request: Request): Promise<Response> {
           return state;
         }
         case "create-deal": {
-          const name = String(body.name || "").trim();
-          const company = String(body.company || "").trim();
-          const amount = Number(body.amount || 0);
-          const stage = (["lead", "qualified", "proposal", "won", "lost"] as const).includes(body.stage as never) ? body.stage as DealStage : "lead";
-          const personId = String(body.personId || "").trim() || null;
-          const ownerEmployeeId = String(body.ownerEmployeeId || "").trim() || null;
-          if (!name || !company) throw new Error("Deal name and company are required.");
-          if (!Number.isFinite(amount) || amount < 0) throw new Error("Deal amount must be a non-negative number.");
-          if (personId && !state.people.some((person) => person.id === personId)) throw new Error("Person not found.");
-          if (ownerEmployeeId && !findEmployee(state, ownerEmployeeId)) throw new Error("Owner employee not found.");
-          const createdAt = timestamp();
-          const deal: DealRecord = {
-            id: createId("deal"),
-            name,
-            company,
-            personId,
-            amount,
-            currency: String(body.currency || "USD").trim().toUpperCase().slice(0, 3) || "USD",
-            stage,
-            probability: dealProbability(stage),
-            ownerEmployeeId,
-            source: String(body.source || "manual").trim() || "manual",
-            nextAction: String(body.nextAction || "").trim(),
-            closeDate: body.closeDate ? String(body.closeDate) : null,
-            notes: String(body.notes || "").trim(),
-            createdAt,
-            updatedAt: createdAt,
-            stageHistory: [{ stage, at: createdAt, note: "Deal created" }],
-          };
-          state.deals.unshift(deal);
-          addActivity(state, { type: "lead", title: `${deal.name} entered the pipeline`, detail: `${deal.company} · ${deal.stage} · ${deal.amount.toLocaleString()} ${deal.currency}` });
+          createDealInState(state, { name: String(body.name || ""), company: String(body.company || ""), amount: Number(body.amount || 0), currency: String(body.currency || "USD"), stage: body.stage as never, personId: String(body.personId || "").trim() || null, ownerEmployeeId: String(body.ownerEmployeeId || "").trim() || null, source: String(body.source || "manual"), nextAction: String(body.nextAction || ""), closeDate: body.closeDate ? String(body.closeDate) : null, notes: String(body.notes || "") });
           return state;
         }
         case "update-deal": {
-          const deal = state.deals.find((candidate) => candidate.id === String(body.dealId || ""));
-          if (!deal) throw new Error("Deal not found.");
-          const requestedStage = body.stage as DealStage | undefined;
-          const stageChanged = requestedStage && ["lead", "qualified", "proposal", "won", "lost"].includes(requestedStage) && requestedStage !== deal.stage;
-          if (stageChanged) {
-            deal.stage = requestedStage;
-            deal.probability = dealProbability(requestedStage);
-            deal.stageHistory = [...deal.stageHistory, { stage: requestedStage, at: timestamp(), note: String(body.stageNote || "Stage updated") }].slice(-30);
-          }
-          if (body.amount !== undefined) {
-            const amount = Number(body.amount);
-            if (!Number.isFinite(amount) || amount < 0) throw new Error("Deal amount must be a non-negative number.");
-            deal.amount = amount;
-          }
-          if (body.nextAction !== undefined) deal.nextAction = String(body.nextAction || "").trim();
-          if (body.closeDate !== undefined) deal.closeDate = body.closeDate ? String(body.closeDate) : null;
-          if (body.notes !== undefined) deal.notes = String(body.notes || "").trim();
-          if (body.ownerEmployeeId !== undefined) {
-            const ownerEmployeeId = String(body.ownerEmployeeId || "").trim() || null;
-            if (ownerEmployeeId && !findEmployee(state, ownerEmployeeId)) throw new Error("Owner employee not found.");
-            deal.ownerEmployeeId = ownerEmployeeId;
-          }
-          deal.updatedAt = timestamp();
-          addActivity(state, { type: "lead", title: `${deal.name} was updated`, detail: stageChanged ? `${deal.company} moved to ${deal.stage}` : `${deal.company} · next action updated` });
+          updateDealInState(state, String(body.dealId || ""), { stage: body.stage as never, stageNote: String(body.stageNote || ""), amount: body.amount === undefined ? undefined : Number(body.amount), nextAction: body.nextAction === undefined ? undefined : String(body.nextAction || ""), closeDate: body.closeDate === undefined ? undefined : (body.closeDate ? String(body.closeDate) : null), notes: body.notes === undefined ? undefined : String(body.notes || ""), ownerEmployeeId: body.ownerEmployeeId === undefined ? undefined : (String(body.ownerEmployeeId || "").trim() || null) });
           return state;
         }
         case "import-row": {
