@@ -25,6 +25,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Lite CRM pipeline with value, stages, owners, next actions, close dates, sources, and stage history | Live at launch scope | `create-deal`, `update-deal`, Pipeline view, dashboard pipeline metrics, additive workspace migration |
 | Draft sequences with activation, explicit Gmail first-step send, reply-pause/suppression guardrails, outbound daily limits/time windows/weekend rules/domain suppression, and durable send idempotency | Live at launch scope | `activate-sequence`, `send-sequence-step`, `Outbound safety` in Settings, `db/005_outbound_messages.sql`, Gmail reply handling |
 | Ticket queue, priority SLA, resolution, CSAT | Live at launch scope | `ticketSlaMinutes`, inbox UI, workspace actions |
+| Grounded support reply drafts with persisted citations and explicit human-send boundary | Live at launch scope | `draft-ticket-reply`, Inbox reply draft action, ticket `replyDraft` state |
 | Campaign drafts and scheduling with approved-content gate | Live at launch scope | `create-campaign`, `schedule-campaign`, Campaigns view |
 | Public keyword monitoring from the self-hosted Dell | Live at launch scope | `researchPublicKeyword`, `create-keyword-monitor`, `check-keyword`, Keywords view |
 | Inbound agent records, published site/landing-page routes, and session-aware public site chat | Live at launch scope | `create-inbound-agent`, `create-site`, `/site/[slug]`, `/api/site/[slug]/chat`, persisted visitor session messages |

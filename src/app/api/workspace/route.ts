@@ -94,6 +94,10 @@ function findContent(state: WorkspaceState, contentId: string) {
   return state.content.find((item) => item.id === contentId);
 }
 
+function findTicket(state: WorkspaceState, ticketId: string) {
+  return state.tickets.find((ticket) => ticket.id === ticketId);
+}
+
 function listActionMatches(action: SmartListAction, row: WorkspaceState["lists"][number]["rows"][number]) {
   if (action.condition === "new") return row.status === "new";
   if (action.condition === "score_at_least") return row.score >= (action.scoreThreshold || 0);
@@ -521,6 +525,35 @@ async function postWorkspace(request: Request): Promise<Response> {
         const status = message === "Playbook not found." ? 404 : message.includes("AI Credits") ? 402 : 400;
         return json({ error: message }, { status });
       }
+    }
+
+    if (action === "draft-ticket-reply") {
+      const current = await getWorkspace(companyId);
+      const ticket = findTicket(current, String(body.ticketId || ""));
+      if (!ticket) return json({ error: "Ticket not found." }, { status: 404 });
+      const requestedEmployee = findEmployee(current, String(body.employeeId || ""));
+      const employee = requestedEmployee?.status === "live"
+        ? requestedEmployee
+        : current.employees.find((candidate) => candidate.department === "Support" && candidate.status === "live")
+          || current.employees.find((candidate) => candidate.status === "live");
+      if (!employee) return json({ error: "Create a live support employee before drafting a reply." }, { status: 400 });
+      if (current.workspace.aiCredits.remaining < 2) return json({ error: "Not enough AI Credits for a support reply draft." }, { status: 402 });
+      const task = `Draft a concise, human support reply for this ticket. Acknowledge the request, answer only from the workspace knowledge, ask one useful question if evidence is missing, and finish with the next owner action.\n\nSubject: ${ticket.subject}\nRequester: ${ticket.requester}\nPriority: ${ticket.priority}\nMessage: ${ticket.message}`;
+      const startedAt = Date.now();
+      const result = await generateEmployeeReply(employee, task, current.documents);
+      const next = await updateWorkspace(companyId, (state) => {
+        const liveTicket = findTicket(state, ticket.id);
+        if (!liveTicket) return state;
+        liveTicket.replyDraft = result.content;
+        liveTicket.replyCitations = result.citations;
+        state.workspace.aiCredits.remaining = Math.max(0, state.workspace.aiCredits.remaining - 2);
+        addActivity(state, { type: "ticket", title: `${liveTicket.id} received a grounded reply draft`, detail: `${employee.name} · ${result.citations.length} source${result.citations.length === 1 ? "" : "s"} · human send still required` });
+        return state;
+      });
+      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.ticket_reply_draft", resourceType: "ticket", resourceId: ticket.id, metadata: { employeeId: employee.id, durationMs: Date.now() - startedAt } }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The reply draft was saved, but its audit record could not be stored." }, { status: 503 }); }
+      try { await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "ticket_reply_draft", unit: "ai", units: 2, provider: result.provider }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The reply draft was saved, but its usage record could not be stored." }, { status: 503 }); }
+      const saved = findTicket(next, ticket.id);
+      return json({ state: workspaceStateForClient(next), ticket: saved, output: saved?.replyDraft || result.content, provider: result.provider }, { headers: rateLimitHeaders(identity.context) });
     }
 
     if (action === "run-mission" || action === "generate-content") {
