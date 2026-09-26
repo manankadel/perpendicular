@@ -53,7 +53,7 @@ ALLOW_LOCAL_LLM_FALLBACK=false
 
 Use `deploy/dell/install-heartbeat-cron.sh` to install this entry from `/opt/blueblood/perpendicular.env` without copying the secret into the crontab. The script uses `flock` so a slow Ollama run cannot overlap with the next tick.
 
-Install `deploy/dell/backup-postgres.sh` as `/opt/blueblood/backup-postgres.sh` with root ownership. Run it daily from root cron. It creates a verified custom-format dump of only the dedicated `perpendicular` database using the Dell's `blueblood` Postgres role by default, keeps fourteen local days, and copies to `PERPENDICULAR_BACKUP_REMOTE` when configured with rclone. A launch gate is not complete until one dump has been restored into a clean, separately named database and the offsite copy has been retrieved successfully.
+Run `deploy/dell/install-backup-cron.sh` as root. It installs `backup-postgres.sh` as `/opt/blueblood/backup-postgres.sh` and schedules it daily at 02:15, outside the active heartbeat window. The script loads the root-owned env file before reading its settings, creates a verified custom-format dump of only the dedicated `perpendicular` database using the Dell's `blueblood` Postgres role by default, keeps fourteen local days, and copies to `PERPENDICULAR_BACKUP_REMOTE` when configured with rclone. A launch gate is not complete until one dump has been restored into a clean, separately named database and the offsite copy has been retrieved successfully.
 
 ## Release and rollback
 

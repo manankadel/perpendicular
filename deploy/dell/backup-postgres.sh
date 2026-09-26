@@ -1,19 +1,27 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly project="blueblood"
-readonly compose_base="/opt/blueblood/docker-compose.yml"
 readonly env_file="/opt/blueblood/perpendicular.env"
-readonly backup_dir="${PERPENDICULAR_BACKUP_DIR:-/opt/blueblood/backups/perpendicular}"
-readonly db_service="${PERPENDICULAR_DB_SERVICE:-postgres}"
-readonly db_name="${PERPENDICULAR_DB_NAME:-perpendicular}"
-readonly db_user="${PERPENDICULAR_DB_USER:-blueblood}"
-readonly retention_days="${PERPENDICULAR_BACKUP_RETENTION_DAYS:-14}"
+readonly compose_base="/opt/blueblood/docker-compose.yml"
 
 if [[ ! -f "$compose_base" || ! -f "$env_file" ]]; then
   echo "Perpendicular database deployment files are missing from /opt/blueblood." >&2
   exit 1
 fi
+
+# The env file is root-owned and is the source of truth for cron-run backups.
+# Load it before resolving the optional remote and retention settings.
+set -a
+# shellcheck disable=SC1091
+source "$env_file"
+set +a
+
+readonly project="blueblood"
+readonly backup_dir="${PERPENDICULAR_BACKUP_DIR:-/opt/blueblood/backups/perpendicular}"
+readonly db_service="${PERPENDICULAR_DB_SERVICE:-postgres}"
+readonly db_name="${PERPENDICULAR_DB_NAME:-perpendicular}"
+readonly db_user="${PERPENDICULAR_DB_USER:-blueblood}"
+readonly retention_days="${PERPENDICULAR_BACKUP_RETENTION_DAYS:-14}"
 
 mkdir -p "$backup_dir"
 chmod 0700 "$backup_dir"
