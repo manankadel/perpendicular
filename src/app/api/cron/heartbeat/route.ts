@@ -87,6 +87,69 @@ export async function POST(request: Request) {
         await failJob(claim, error).catch(() => undefined);
       }
     }
+    const scheduledWork = snapshot.schedules.filter((schedule) => schedule.active && new Date(schedule.nextRunAt).getTime() <= Date.now());
+    for (const scheduleSnapshot of scheduledWork) {
+      const claim = await claimJob({
+        workspaceId: companyId,
+        kind: "scheduled-work",
+        idempotencyKey: `scheduled:${companyId}:${scheduleSnapshot.id}:${scheduleSnapshot.nextRunAt}`,
+        payload: { scheduleId: scheduleSnapshot.id, scheduledFor: scheduleSnapshot.nextRunAt },
+      });
+      if (!claim) continue;
+      let ran = false;
+      try {
+        await updateWorkspace(companyId, async (workspace) => {
+          const schedule = workspace.schedules.find((candidate) => candidate.id === scheduleSnapshot.id);
+          const employee = schedule?.employeeId ? workspace.employees.find((candidate) => candidate.id === schedule.employeeId) : workspace.employees.find((candidate) => candidate.status === "live");
+          if (!schedule || !schedule.active || !employee) return workspace;
+          if (workspace.workspace.aiCredits.remaining < 2) throw new Error("Not enough AI Credits for scheduled work.");
+          const startedAt = Date.now();
+          const result = await generateEmployeeReply(employee, schedule.description, workspace.documents);
+          const scoringStartedAt = Date.now();
+          const score = scoreRun(schedule.description, result.content);
+          const createdAt = timestamp();
+          workspace.runs.unshift({
+            id: createId("run"),
+            employeeId: employee.id,
+            trigger: "heartbeat",
+            task: schedule.description,
+            output: result.content,
+            score,
+            reason: "Scheduled work completed with local context and an independent score.",
+            status: "completed",
+            createdAt,
+            durationMs: Math.max(1, Date.now() - startedAt),
+            trace: [
+              { label: "Memory", detail: "Loaded workspace state", durationMs: 0, cost: 0, status: "complete" },
+              { label: "Knowledge", detail: `${result.citations.length} scoped source${result.citations.length === 1 ? "" : "s"} considered`, durationMs: result.timings.retrievalDurationMs, cost: 0, status: "complete" },
+              { label: "Worker", detail: `${employee.model} · ${result.provider}`, durationMs: result.timings.workerDurationMs, cost: 1, status: "complete" },
+              { label: "Evaluator", detail: "Independent rubric score", durationMs: Math.max(0, Date.now() - scoringStartedAt), cost: 1, status: "complete" },
+            ],
+          });
+          employee.score = employee.score > 0 ? Math.round(employee.score * 0.65 + score * 0.35) : score;
+          employee.scoreTrend = [...employee.scoreTrend.filter((value) => value > 0).slice(-6), score];
+          employee.lastRunAt = createdAt;
+          schedule.lastRunAt = createdAt;
+          schedule.runCount += 1;
+          if (schedule.cadence === "once") schedule.active = false;
+          else {
+            const minutes = schedule.cadence === "every 15m" ? 15 : schedule.cadence === "hourly" ? 60 : schedule.cadence === "daily" ? 1440 : 10080;
+            schedule.nextRunAt = new Date(Date.now() + minutes * 60 * 1000).toISOString();
+          }
+          workspace.workspace.aiCredits.remaining = Math.max(0, workspace.workspace.aiCredits.remaining - 2);
+          addActivity(workspace, { type: "run", title: `${schedule.name} woke up`, detail: `${employee.name} · score ${score} · ${schedule.cadence}` });
+          workspace.runs = workspace.runs.slice(0, 30);
+          ran = true;
+          return workspace;
+        });
+        await completeJob(claim);
+        if (ran) await recordUsage({ workspaceId: companyId, actorId: "heartbeat", feature: "scheduled_run", unit: "ai", units: 2 });
+        if (ran) runCount += 1;
+      } catch (error) {
+        failedCount += 1;
+        await failJob(claim, error).catch(() => undefined);
+      }
+    }
   }
 
   const state = companyIds.length === 1 ? await getWorkspace(companyIds[0]) : null;

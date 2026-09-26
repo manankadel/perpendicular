@@ -5,6 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   ArrowUpRight,
+  Building2,
   Bot,
   BrainCircuit,
   CalendarClock,
@@ -14,15 +15,18 @@ import {
   Database,
   FileText,
   Gauge,
+  Globe2,
   Inbox,
   LayoutDashboard,
   ListChecks,
   Mail,
+  Megaphone,
   MessageSquare,
   Plus,
   PenLine,
   Plug,
   Radio,
+  Search,
   Send,
   Settings,
   ShieldCheck,
@@ -35,8 +39,9 @@ import {
 import type { Activity as ActivityRecord, ContentItem, Employee, Mission, OnboardingGoal, OutboundSafetySettings, Playbook, SmartList, SmartRow, UsageSummary, WorkspaceState } from "@/lib/domain";
 import type { DeadLetterJob } from "@/lib/job-store";
 import type { WebhookEventSummary } from "@/lib/integration-store";
+import { PlatformView, type PlatformViewName } from "@/components/PlatformViews";
 
-type View = "overview" | "missions" | "employees" | "knowledge" | "content" | "lists" | "sequences" | "inbox" | "playbooks" | "activity" | "settings";
+type View = "overview" | "missions" | "employees" | "knowledge" | "content" | "lists" | "sequences" | "inbox" | "playbooks" | "activity" | "settings" | PlatformViewName;
 type Mutation = (action: string, payload?: Record<string, unknown>, success?: string) => Promise<WorkspaceState | null>;
 type Viewer = { email: string; firstName: string; lastName: string };
 type OpsSummary = { webhooks: WebhookEventSummary[]; deadLetterJobs: DeadLetterJob[] };
@@ -71,13 +76,32 @@ const navGroups: { label: string; items: { id: View; label: string; icon: Lucide
     label: "Operate",
     items: [
       { id: "overview", label: "Workbench", icon: LayoutDashboard },
+      { id: "company", label: "Company", icon: Building2 },
+      { id: "chat", label: "Chat", icon: MessageSquare },
+      { id: "scheduled", label: "Scheduled", icon: CalendarClock },
+      { id: "dashboard", label: "Dashboard", icon: Gauge },
       { id: "missions", label: "Missions", icon: ClipboardCheck },
       { id: "employees", label: "Employees", icon: Bot },
       { id: "knowledge", label: "Knowledge", icon: BrainCircuit },
+      { id: "people", label: "People", icon: Users },
+      { id: "lead-data", label: "Lead Data", icon: Search },
+    ],
+  },
+  {
+    label: "Engage",
+    items: [
       { id: "content", label: "Content", icon: PenLine },
       { id: "lists", label: "Smart Lists", icon: ListChecks },
       { id: "sequences", label: "Sequences", icon: Send },
       { id: "inbox", label: "Inbox", icon: Inbox },
+      { id: "campaigns", label: "Campaigns", icon: Megaphone },
+      { id: "keywords", label: "Keywords", icon: Radio },
+    ],
+  },
+  {
+    label: "Inbound",
+    items: [
+      { id: "inbound", label: "Agents & Sites", icon: Globe2 },
     ],
   },
   {
@@ -85,6 +109,7 @@ const navGroups: { label: string; items: { id: View; label: string; icon: Lucide
     items: [
       { id: "activity", label: "Activity", icon: Activity },
       { id: "playbooks", label: "Playbooks", icon: Plug },
+      { id: "apps", label: "Apps", icon: Plug },
       { id: "settings", label: "Settings", icon: Settings },
     ],
   },
@@ -92,20 +117,37 @@ const navGroups: { label: string; items: { id: View; label: string; icon: Lucide
 
 const viewNames: Record<View, string> = {
   overview: "Workbench",
+  company: "Company",
+  chat: "Chat",
+  scheduled: "Scheduled",
+  dashboard: "Dashboard",
   missions: "Missions",
   employees: "Employees",
   knowledge: "Knowledge",
+  people: "People",
+  "lead-data": "Lead Data",
   content: "Content",
   lists: "Smart Lists",
   sequences: "Sequences",
   inbox: "Inbox",
+  campaigns: "Campaigns",
+  keywords: "Keywords",
+  inbound: "Agents & Sites",
   playbooks: "Playbooks",
+  apps: "Apps",
   activity: "Activity",
   settings: "Settings",
 };
 
+const platformViewNames = new Set<PlatformViewName>(["company", "chat", "scheduled", "dashboard", "people", "lead-data", "campaigns", "keywords", "inbound", "apps"]);
+
 function navCount(view: View, state: WorkspaceState) {
   if (view === "employees") return state.employees.length;
+  if (view === "people") return state.people.length || null;
+  if (view === "scheduled") return state.schedules.filter((schedule) => schedule.active).length || null;
+  if (view === "campaigns") return state.campaigns.filter((campaign) => campaign.status !== "completed").length || null;
+  if (view === "keywords") return state.keywordMonitors.filter((monitor) => monitor.status === "active").length || null;
+  if (view === "inbound") return state.inboundAgents.filter((agent) => agent.status === "live").length || null;
   if (view === "missions") return state.missions.filter((mission) => mission.status !== "completed").length;
   if (view === "knowledge") return state.documents.length;
   if (view === "content") return state.content.filter((item) => item.status === "review").length || null;
@@ -904,7 +946,7 @@ export default function PerpendicularConsole() {
     <div className="main-shell">
       <div className="mobile-topbar">{navigation.map((item) => { const Icon = item.icon; return <button className={`nav-item ${activeView === item.id ? "active" : ""}`} onClick={() => setActiveView(item.id)} key={item.id}><Icon size={13} /><span>{item.label}</span></button>; })}</div>
       <header className="topbar"><div className="crumbs"><strong>{state.workspace.name}</strong><span className="slash">/</span><span>{activeLabel}</span></div><div className="top-actions">{busyAction ? <div className="action-status" role="status" aria-live="polite"><span className="action-spinner" />Working · {actionLabel(busyAction)}</div> : null}<RuntimeStatus health={runtimeHealth} error={runtimeHealthError} compact /><button className="command-button" onClick={() => { setActiveView("overview"); window.setTimeout(() => document.querySelector<HTMLTextAreaElement>(".chat-compose textarea")?.focus(), 0); }} disabled={Boolean(busyAction)}><Sparkles size={13} />Ask the system</button></div></header>
-      <main className="content">{activeView === "overview" ? <Overview state={state} usage={usage} selectedEmployeeId={selectedEmployeeId} setSelectedEmployeeId={setSelectedEmployeeId} setView={setActiveView} chatInput={chatInput} setChatInput={setChatInput} chatBusy={busyAction === "chat"} onSend={sendChat} /> : activeView === "missions" ? <MissionsView state={state} mutate={mutate} busyAction={busyAction} /> : activeView === "employees" ? <EmployeesView state={state} selectedEmployeeId={selectedEmployeeId} setSelectedEmployeeId={setSelectedEmployeeId} mutate={mutate} setShowHire={setShowHire} /> : activeView === "knowledge" ? <KnowledgeView state={state} setShowDocument={setShowDocument} /> : activeView === "content" ? <ContentView state={state} mutate={mutate} /> : activeView === "lists" ? <ListsView state={state} mutate={mutate} setShowDocument={setShowDocument} setShowList={setShowList} setShowLead={(show, listId) => { setShowLead(show); if (listId) setLeadListId(listId); }} /> : activeView === "sequences" ? <SequencesView state={state} mutate={mutate} setShowSequence={setShowSequence} /> : activeView === "inbox" ? <InboxView state={state} mutate={mutate} setShowTicket={setShowTicket} /> : activeView === "playbooks" ? <PlaybooksView state={state} mutate={mutate} /> : activeView === "activity" ? <ActivityView state={state} /> : <SettingsView state={state} usage={usage} />}</main>
+      <main className="content">{platformViewNames.has(activeView as PlatformViewName) ? <PlatformView view={activeView as PlatformViewName} state={state} mutate={mutate} /> : activeView === "overview" ? <Overview state={state} usage={usage} selectedEmployeeId={selectedEmployeeId} setSelectedEmployeeId={setSelectedEmployeeId} setView={setActiveView} chatInput={chatInput} setChatInput={setChatInput} chatBusy={busyAction === "chat"} onSend={sendChat} /> : activeView === "missions" ? <MissionsView state={state} mutate={mutate} busyAction={busyAction} /> : activeView === "employees" ? <EmployeesView state={state} selectedEmployeeId={selectedEmployeeId} setSelectedEmployeeId={setSelectedEmployeeId} mutate={mutate} setShowHire={setShowHire} /> : activeView === "knowledge" ? <KnowledgeView state={state} setShowDocument={setShowDocument} /> : activeView === "content" ? <ContentView state={state} mutate={mutate} /> : activeView === "lists" ? <ListsView state={state} mutate={mutate} setShowDocument={setShowDocument} setShowList={setShowList} setShowLead={(show, listId) => { setShowLead(show); if (listId) setLeadListId(listId); }} /> : activeView === "sequences" ? <SequencesView state={state} mutate={mutate} setShowSequence={setShowSequence} /> : activeView === "inbox" ? <InboxView state={state} mutate={mutate} setShowTicket={setShowTicket} /> : activeView === "playbooks" ? <PlaybooksView state={state} mutate={mutate} /> : activeView === "activity" ? <ActivityView state={state} /> : <SettingsView state={state} usage={usage} />}</main>
     </div>
     {notice ? <div className="notice" role="status">{notice}</div> : null}
     {showHire ? <Modal title="Hire an employee" description="A title is enough to start. The prompt is versioned from the first save." onClose={() => setShowHire(false)}><form className="form-card" onSubmit={submitEmployee}><div className="field"><label htmlFor="employee-name">Name</label><input id="employee-name" value={employeeForm.name} onChange={(event) => setEmployeeForm({ ...employeeForm, name: event.target.value })} placeholder="e.g. Atlas" /></div><div className="field"><label htmlFor="employee-title">Title *</label><input id="employee-title" required value={employeeForm.title} onChange={(event) => setEmployeeForm({ ...employeeForm, title: event.target.value })} placeholder="e.g. Revenue intelligence lead" /></div><div className="field"><label htmlFor="employee-department">Department</label><select id="employee-department" value={employeeForm.department} onChange={(event) => setEmployeeForm({ ...employeeForm, department: event.target.value })}><option>Growth</option><option>Content</option><option>Support</option><option>Operations</option></select></div><div className="field"><label htmlFor="employee-prompt">System prompt</label><textarea id="employee-prompt" value={employeeForm.systemPrompt} onChange={(event) => setEmployeeForm({ ...employeeForm, systemPrompt: event.target.value })} placeholder="Optional. The system writes a safe default if blank." /></div><div className="form-actions"><button type="button" className="button-secondary" onClick={() => setShowHire(false)}>Cancel</button><button type="submit" className="button-primary" disabled={busyAction === "create-employee"}>Create employee <ArrowUpRight size={13} /></button></div></form></Modal> : null}

@@ -11,12 +11,17 @@ The production shape is deliberate: Vercel serves the browser UI; the Dell runs 
 - Perpendicular-hosted sign-in with password and MFA handoff to Blueblood ID, plus product membership and workspace isolation.
 - First-run workspace discovery: infer a public company URL from the signed-in business email, fetch real public context, create a four-role operator pod with a company profile, mission queue, and first content brief, then run a persisted first mission before showing the workbench.
 - Employee creation, prompt versions, golden evaluations, chat, manual runs, schedules, and heartbeat execution.
+- Company context, a full persisted Chat surface, Scheduled work, and a workspace-derived Dashboard.
 - Mission queue with delegation, local-model runs, human review, approval, completion, due dates, and audit activity.
 - Grounded content workflow with editorial briefs, draft generation, review, approval, scheduling, and explicit publish state.
 - Transparent playbook catalog that installs and creates durable missions instead of hiding automation behind fake buttons.
 - Knowledge capture from pasted text or a public URL, with scoped retrieval and citations.
 - Smart List creation, lead import, public company research, dedupe, credit accounting, and sequence enrollment gates.
+- People and Lead Data records with explicit public qualification, source runs, and deterministic ICP scoring.
 - Draft sequences with suppression/reply-pause state. No external email is sent unless Gmail is connected and a send command is explicitly called.
+- Campaign drafts with audience/content gates, public Keyword Monitoring checks, and persisted editorial scheduling.
+- Inbound agents, published websites/landing pages, and public site chat routed to a real workspace employee.
+- Workspace Apps as persisted workflow/API/MCP definitions with explicit activation state.
 - Ticket queue with priority, owner, SLA deadline, resolution, and CSAT.
 - Gmail OAuth with PKCE, encrypted refresh tokens, message sync, inbox persistence, and reply detection.
 - Scoped API keys, revocation, audit events, OpenAPI JSON, and MCP JSON-RPC tools.

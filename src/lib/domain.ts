@@ -209,6 +209,113 @@ export type WorkspaceProfile = {
   updatedAt: string;
 };
 
+export type WorkspaceMember = {
+  id: string;
+  name: string;
+  email: string;
+  role: "owner" | "admin" | "member" | "operator";
+  status: "active" | "invited";
+  createdAt: string;
+};
+
+export type ScheduledWork = {
+  id: string;
+  name: string;
+  description: string;
+  employeeId: string | null;
+  cadence: "once" | "every 15m" | "hourly" | "daily" | "weekly";
+  nextRunAt: string;
+  active: boolean;
+  lastRunAt: string | null;
+  runCount: number;
+  createdAt: string;
+};
+
+export type PersonRecord = {
+  id: string;
+  name: string;
+  email: string;
+  title: string;
+  company: string;
+  location: string;
+  score: number;
+  status: "new" | "enriched" | "qualified";
+  source: "manual" | "csv" | "public";
+  tags: string[];
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LeadSource = {
+  id: string;
+  name: string;
+  type: "manual" | "csv" | "public";
+  status: "ready" | "running" | "completed" | "failed";
+  recordCount: number;
+  lastRunAt: string | null;
+  createdAt: string;
+};
+
+export type Campaign = {
+  id: string;
+  name: string;
+  type: "broadcast" | "content" | "event";
+  audience: string;
+  status: "draft" | "scheduled" | "running" | "completed";
+  scheduledAt: string | null;
+  contentId: string | null;
+  listId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type KeywordMonitor = {
+  id: string;
+  keyword: string;
+  status: "active" | "paused";
+  lastCheckedAt: string | null;
+  matchCount: number;
+  latestSummary: string | null;
+  createdAt: string;
+};
+
+export type InboundAgent = {
+  id: string;
+  name: string;
+  description: string;
+  employeeId: string | null;
+  channel: "website" | "api" | "widget";
+  greeting: string;
+  status: "draft" | "live" | "paused";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SiteRecord = {
+  id: string;
+  name: string;
+  kind: "website" | "landing_page";
+  slug: string;
+  agentId: string | null;
+  status: "draft" | "published";
+  headline: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AppRecord = {
+  id: string;
+  name: string;
+  description: string;
+  type: "workflow" | "api" | "mcp";
+  employeeId: string | null;
+  status: "draft" | "active";
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type Mission = {
   id: string;
   title: string;
@@ -277,6 +384,7 @@ export type WorkspaceState = {
     onboarding: OnboardingState;
   };
   profile: WorkspaceProfile;
+  members: WorkspaceMember[];
   employees: Employee[];
   documents: DocumentRecord[];
   conversations: Conversation[];
@@ -288,6 +396,14 @@ export type WorkspaceState = {
   playbooks: Playbook[];
   lists: SmartList[];
   sequences: Sequence[];
+  schedules: ScheduledWork[];
+  people: PersonRecord[];
+  leadSources: LeadSource[];
+  campaigns: Campaign[];
+  keywordMonitors: KeywordMonitor[];
+  inboundAgents: InboundAgent[];
+  sites: SiteRecord[];
+  apps: AppRecord[];
   tickets: Ticket[];
   activity: Activity[];
   suppressedEmails: string[];
@@ -479,6 +595,7 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
       timezone: "UTC",
       updatedAt: timestamp,
     },
+    members: Array.isArray(state.members) ? state.members : [],
     employees,
     documents,
     conversations: Array.isArray(state.conversations) ? state.conversations : [],
@@ -496,6 +613,14 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
     playbooks: Array.isArray(state.playbooks) ? state.playbooks : defaultPlaybooks(),
     lists,
     sequences,
+    schedules: Array.isArray(state.schedules) ? state.schedules : [],
+    people: Array.isArray(state.people) ? state.people : [],
+    leadSources: Array.isArray(state.leadSources) ? state.leadSources : [],
+    campaigns: Array.isArray(state.campaigns) ? state.campaigns : [],
+    keywordMonitors: Array.isArray(state.keywordMonitors) ? state.keywordMonitors : [],
+    inboundAgents: Array.isArray(state.inboundAgents) ? state.inboundAgents : [],
+    sites: Array.isArray(state.sites) ? state.sites : [],
+    apps: Array.isArray(state.apps) ? state.apps : [],
     tickets: Array.isArray(state.tickets) ? state.tickets : [],
     activity: Array.isArray(state.activity) ? state.activity : [],
     suppressedEmails: Array.isArray(state.suppressedEmails) ? state.suppressedEmails.map((email) => email.toLowerCase()) : [],
@@ -532,6 +657,7 @@ function createEmptyState(companyId: string): WorkspaceState {
       timezone: "UTC",
       updatedAt: now(),
     },
+    members: [],
     employees: [],
     documents: [],
     conversations: [],
@@ -543,6 +669,14 @@ function createEmptyState(companyId: string): WorkspaceState {
     playbooks: defaultPlaybooks(),
     lists: [],
     sequences: [],
+    schedules: [],
+    people: [],
+    leadSources: [],
+    campaigns: [],
+    keywordMonitors: [],
+    inboundAgents: [],
+    sites: [],
+    apps: [],
     tickets: [],
     activity: [],
     suppressedEmails: [],

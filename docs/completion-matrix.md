@@ -11,6 +11,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Discovery creates a usable operator pod, company profile, missions, first content brief, and a five-step draft sequence | Live | `buildOnboardingArtifacts`, `bootstrap-workspace`, onboarding UI, domain migration tests |
 | Onboarding proof gate and explicit manual-vs-heartbeat handoff | Live | `proved` onboarding state, first mission linkage, `finish-onboarding`, `enable-onboarding-schedule`, onboarding UI |
 | Employee → scoped knowledge → local Ollama run → score → trace | Live | `run-employee`, `llm.ts`, `Run.trace`, domain tests |
+| Company context, persisted Chat, Scheduled work, and workspace Dashboard | Live at launch scope | `PlatformViews.tsx`, `update-profile`, `create-schedule`, `run-scheduled`, workspace state |
 | Mission queue with run → review → approve, delegation, due dates, and audit activity | Live at launch scope | `run-mission`, `approve-mission`, `delegate-mission`, Missions view |
 | Grounded content workflow with draft → review → approve → schedule → publish state | Live at launch scope | `generate-content`, `approve-content`, `schedule-content`, Content view |
 | Inspectable playbook catalog that creates durable missions | Live at launch scope | `install-playbook`, `run-playbook`, Playbooks view |
@@ -18,8 +19,13 @@ This is the implementation truth for the supplied product and audit documents. A
 | Prompt versions, golden tests, evaluate, activate, rollback | Live | Employee detail UI and workspace actions |
 | Heartbeat scheduling with Postgres-leased idempotency | Live | `src/lib/job-store.ts`, heartbeat route, job tests |
 | Smart Lists, public research, dedupe, credit decrement, sequence enrollment | Live at launch scope | Workspace actions and UI |
+| People and Lead Data records with explicit public qualification and source runs | Live at launch scope | `create-person`, `qualify-person`, `create-lead-source`, `run-lead-source`, People and Lead Data views |
 | Draft sequences with activation, explicit Gmail first-step send, reply-pause/suppression guardrails, outbound daily limits/time windows/weekend rules/domain suppression, and durable send idempotency | Live at launch scope | `activate-sequence`, `send-sequence-step`, `Outbound safety` in Settings, `db/005_outbound_messages.sql`, Gmail reply handling |
 | Ticket queue, priority SLA, resolution, CSAT | Live at launch scope | `ticketSlaMinutes`, inbox UI, workspace actions |
+| Campaign drafts and scheduling with approved-content gate | Live at launch scope | `create-campaign`, `schedule-campaign`, Campaigns view |
+| Public keyword monitoring from the self-hosted Dell | Live at launch scope | `researchPublicKeyword`, `create-keyword-monitor`, `check-keyword`, Keywords view |
+| Inbound agent records, published site/landing-page routes, and public site chat | Live at launch scope | `create-inbound-agent`, `create-site`, `/site/[slug]`, `/api/site/[slug]/chat` |
+| Workspace Apps definitions with explicit activation state | Live at launch scope | `create-app`, `toggle-app`, Apps view |
 | Gmail OAuth, encrypted refresh tokens, sync, watch renewal, webhook dedupe | Implemented; provider E2E pending | Gmail routes and integration health tables |
 | Persisted Gmail inbox message read surface | Live in code; provider E2E pending | `/api/inbox`, Inbox view, `inbox-store.ts` |
 | Capability-keyed inbound website widget with persisted visitor conversations | Live in code; deployed provider/model evidence pending | `/widget/{workspaceId}`, `/api/widget/{workspaceId}/chat`, Inbox → Website conversations |

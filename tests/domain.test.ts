@@ -35,6 +35,11 @@ test("production workspaces start empty instead of receiving demo records", () =
     assert.equal(state.documents.length, 0);
     assert.equal(state.runs.length, 0);
     assert.equal(state.lists.length, 0);
+    assert.equal(state.schedules.length, 0);
+    assert.equal(state.people.length, 0);
+    assert.equal(state.campaigns.length, 0);
+    assert.equal(state.inboundAgents.length, 0);
+    assert.equal(state.apps.length, 0);
   } finally {
     if (previousNodeEnv === undefined) delete environment.NODE_ENV;
     else environment.NODE_ENV = previousNodeEnv;
@@ -124,6 +129,29 @@ test("seed workspace exposes the durable operating surfaces", () => {
   assert.ok(state.missions.some((mission) => mission.status === "needs_review"));
   assert.ok(state.content.some((item) => item.status === "review"));
   assert.ok(state.playbooks.every((playbook) => playbook.installedAt));
+});
+
+test("legacy workspaces receive the product-native collection defaults", () => {
+  const legacy = JSON.parse(JSON.stringify(createInitialState("legacy-native"))) as WorkspaceState;
+  delete (legacy as Partial<WorkspaceState>).members;
+  delete (legacy as Partial<WorkspaceState>).schedules;
+  delete (legacy as Partial<WorkspaceState>).people;
+  delete (legacy as Partial<WorkspaceState>).leadSources;
+  delete (legacy as Partial<WorkspaceState>).campaigns;
+  delete (legacy as Partial<WorkspaceState>).keywordMonitors;
+  delete (legacy as Partial<WorkspaceState>).inboundAgents;
+  delete (legacy as Partial<WorkspaceState>).sites;
+  delete (legacy as Partial<WorkspaceState>).apps;
+  const migrated = normalizeWorkspaceState(legacy, "legacy-native");
+  assert.deepEqual(migrated.members, []);
+  assert.deepEqual(migrated.schedules, []);
+  assert.deepEqual(migrated.people, []);
+  assert.deepEqual(migrated.leadSources, []);
+  assert.deepEqual(migrated.campaigns, []);
+  assert.deepEqual(migrated.keywordMonitors, []);
+  assert.deepEqual(migrated.inboundAgents, []);
+  assert.deepEqual(migrated.sites, []);
+  assert.deepEqual(migrated.apps, []);
 });
 
 test("legacy one-operator workspaces receive a deterministic work queue", () => {

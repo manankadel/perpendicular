@@ -11,8 +11,16 @@ import {
   type OnboardingDiscovery,
   type OnboardingGoal,
   type ContentItem,
+  type AppRecord,
+  type Campaign,
   type Employee,
+  type InboundAgent,
+  type KeywordMonitor,
+  type LeadSource,
   type Mission,
+  type PersonRecord,
+  type ScheduledWork,
+  type SiteRecord,
   type WorkspaceState,
 } from "@/lib/domain";
 import { generateEmployeeReply, type LlmResult } from "@/lib/llm";
@@ -25,7 +33,7 @@ import { upsertGmailMessage } from "@/lib/inbox-store";
 import { claimOutboundMessage, markOutboundFailed, markOutboundSent, markOutboundUnknown } from "@/lib/outbound-store";
 import { sequenceEmailFor, sequenceStepIdempotencyKey } from "@/lib/sequence";
 import { ingestUploadedDocument } from "@/lib/document-ingest";
-import { researchPersonCompany, researchWebsite } from "@/lib/public-research";
+import { researchPersonCompany, researchPublicKeyword, researchWebsite } from "@/lib/public-research";
 import { corsHeadersFor } from "@/lib/cors";
 import { recordUsage } from "@/lib/usage";
 import { createWidgetKey, widgetKeyHash } from "@/lib/widget";
@@ -160,6 +168,11 @@ async function applySequenceDelivery(args: {
 
 function onboardingGoal(value: unknown): OnboardingGoal {
   return (["revenue", "delivery", "content", "support"] as const).includes(value as OnboardingGoal) ? value as OnboardingGoal : "revenue";
+}
+
+function nextScheduleAt(cadence: ScheduledWork["cadence"], from = Date.now()) {
+  const delay = cadence === "every 15m" ? 15 : cadence === "hourly" ? 60 : cadence === "daily" ? 1440 : cadence === "weekly" ? 10080 : 0;
+  return new Date(from + delay * 60 * 1000).toISOString();
 }
 
 async function getWorkspaceRoute(request: Request) {
@@ -887,6 +900,222 @@ async function postWorkspace(request: Request): Promise<Response> {
           addActivity(state, { type: "system", title: "Outbound safety settings updated", detail: `${state.outboundSafety.dailySendLimit} sends/day · ${state.outboundSafety.sendWindowStart}–${state.outboundSafety.sendWindowEnd} · ${state.outboundSafety.timezone}` });
           return state;
         }
+        case "create-schedule": {
+          const name = String(body.name || "").trim();
+          const description = String(body.description || "").trim();
+          if (!name || !description) throw new Error("Schedule name and task are required.");
+          const employeeId = String(body.employeeId || "").trim() || null;
+          if (employeeId && !findEmployee(state, employeeId)) throw new Error("Assigned employee not found.");
+          const cadence = (["once", "every 15m", "hourly", "daily", "weekly"] as const).includes(body.cadence as never)
+            ? body.cadence as ScheduledWork["cadence"]
+            : "daily";
+          const requestedNextRun = body.nextRunAt ? new Date(String(body.nextRunAt)) : null;
+          if (requestedNextRun && Number.isNaN(requestedNextRun.getTime())) throw new Error("The next run time is invalid.");
+          const schedule: ScheduledWork = {
+            id: createId("schedule"),
+            name,
+            description,
+            employeeId,
+            cadence,
+            nextRunAt: requestedNextRun?.toISOString() || nextScheduleAt(cadence),
+            active: true,
+            lastRunAt: null,
+            runCount: 0,
+            createdAt: timestamp(),
+          };
+          state.schedules.unshift(schedule);
+          addActivity(state, { type: "system", title: `${name} was scheduled`, detail: `${cadence} · ${employeeId ? findEmployee(state, employeeId)?.name : "unassigned"}` });
+          return state;
+        }
+        case "toggle-schedule": {
+          const schedule = state.schedules.find((candidate) => candidate.id === String(body.scheduleId || ""));
+          if (!schedule) throw new Error("Schedule not found.");
+          schedule.active = body.active !== false;
+          if (schedule.active && new Date(schedule.nextRunAt).getTime() <= Date.now()) schedule.nextRunAt = nextScheduleAt(schedule.cadence);
+          addActivity(state, { type: "system", title: `${schedule.name} ${schedule.active ? "enabled" : "paused"}`, detail: schedule.active ? `Next run ${schedule.nextRunAt}` : "No scheduled run will fire until it is resumed" });
+          return state;
+        }
+        case "run-scheduled": {
+          const schedule = state.schedules.find((candidate) => candidate.id === String(body.scheduleId || ""));
+          if (!schedule) throw new Error("Schedule not found.");
+          const employee = schedule.employeeId ? findEmployee(state, schedule.employeeId) : state.employees.find((candidate) => candidate.status === "live");
+          if (!employee) throw new Error("Assign a live employee before running this schedule.");
+          if (state.workspace.aiCredits.remaining < 2) throw new Error("Not enough AI Credits for a scheduled run.");
+          const startedAt = Date.now();
+          const result = await generateEmployeeReply(employee, schedule.description, state.documents);
+          const run = makeRun(state, employee, schedule.description, "heartbeat", result, startedAt);
+          schedule.lastRunAt = run.createdAt;
+          schedule.runCount += 1;
+          schedule.active = schedule.cadence === "once" ? false : schedule.active;
+          schedule.nextRunAt = schedule.active ? nextScheduleAt(schedule.cadence, Date.now()) : schedule.nextRunAt;
+          addActivity(state, { type: "run", title: `${schedule.name} completed`, detail: `${employee.name} · score ${run.score} · ${result.provider}` });
+          return state;
+        }
+        case "create-person": {
+          const name = String(body.name || "").trim();
+          const email = normalizeEmail(String(body.email || ""));
+          const company = String(body.company || "").trim();
+          if (!name || !company || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Name, company, and a valid email are required.");
+          if (state.people.some((person) => person.email === email)) throw new Error("This person already exists in the workspace.");
+          const lead = scoreLead({ email, role: String(body.title || ""), company, idealCustomer: state.profile.idealCustomer });
+          const person: PersonRecord = {
+            id: createId("person"),
+            name,
+            email,
+            title: String(body.title || "Unknown").trim() || "Unknown",
+            company,
+            location: String(body.location || "Unknown").trim() || "Unknown",
+            score: lead.score,
+            status: "new",
+            source: "manual",
+            tags: String(body.tags || "").split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 12),
+            notes: String(body.notes || "").trim(),
+            createdAt: timestamp(),
+            updatedAt: timestamp(),
+          };
+          state.people.unshift(person);
+          addActivity(state, { type: "lead", title: `${name} was added to People`, detail: `${company} · initial score ${person.score}` });
+          return state;
+        }
+        case "qualify-person": {
+          const person = state.people.find((candidate) => candidate.id === String(body.personId || ""));
+          if (!person) throw new Error("Person not found.");
+          if (person.status === "qualified") return state;
+          if (state.workspace.dataCredits.remaining < 2) throw new Error("Not enough Data Credits for public research.");
+          const research = await researchPersonCompany(person.email, person.company);
+          state.workspace.dataCredits.remaining -= 2;
+          const lead = scoreLead({ email: person.email, role: person.title, company: person.company, researchText: research.text, idealCustomer: state.profile.idealCustomer });
+          person.score = lead.score;
+          person.status = "qualified";
+          person.notes = [person.notes, research.insight].filter(Boolean).join("\n").slice(0, 2000);
+          person.tags = [...new Set([...person.tags, lead.intent])].slice(0, 12);
+          person.updatedAt = timestamp();
+          addActivity(state, { type: "lead", title: `${person.name} was qualified`, detail: `Public evidence captured · score ${person.score}` });
+          return state;
+        }
+        case "create-lead-source": {
+          const name = String(body.name || "").trim();
+          if (!name) throw new Error("Source name is required.");
+          const type = (["manual", "csv", "public"] as const).includes(body.type as never) ? body.type as LeadSource["type"] : "manual";
+          const source: LeadSource = { id: createId("source"), name, type, status: "ready", recordCount: 0, lastRunAt: null, createdAt: timestamp() };
+          state.leadSources.unshift(source);
+          addActivity(state, { type: "lead", title: `${name} was added as a lead source`, detail: `${type} source · ready to run` });
+          return state;
+        }
+        case "run-lead-source": {
+          const source = state.leadSources.find((candidate) => candidate.id === String(body.sourceId || ""));
+          if (!source) throw new Error("Lead source not found.");
+          source.status = "running";
+          source.recordCount = state.people.length + state.lists.reduce((total, list) => total + list.rows.length, 0);
+          source.status = "completed";
+          source.lastRunAt = timestamp();
+          addActivity(state, { type: "lead", title: `${source.name} finished`, detail: `${source.recordCount} workspace records available for qualification` });
+          return state;
+        }
+        case "create-campaign": {
+          const name = String(body.name || "").trim();
+          if (!name) throw new Error("Campaign name is required.");
+          const type = (["broadcast", "content", "event"] as const).includes(body.type as never) ? body.type as Campaign["type"] : "content";
+          const campaign: Campaign = { id: createId("campaign"), name, type, audience: String(body.audience || "Workspace audience").trim(), status: "draft", scheduledAt: null, contentId: String(body.contentId || "").trim() || null, listId: String(body.listId || "").trim() || null, createdAt: timestamp(), updatedAt: timestamp() };
+          state.campaigns.unshift(campaign);
+          addActivity(state, { type: "content", title: `${name} was created`, detail: `${type} campaign · draft` });
+          return state;
+        }
+        case "schedule-campaign": {
+          const campaign = state.campaigns.find((candidate) => candidate.id === String(body.campaignId || ""));
+          if (!campaign) throw new Error("Campaign not found.");
+          const scheduledAt = body.scheduledAt ? new Date(String(body.scheduledAt)) : new Date(Date.now() + 60 * 60 * 1000);
+          if (Number.isNaN(scheduledAt.getTime())) throw new Error("Campaign time is invalid.");
+          if (campaign.contentId) {
+            const content = findContent(state, campaign.contentId);
+            if (!content || !["approved", "scheduled"].includes(content.status)) throw new Error("Approve the campaign content before scheduling it.");
+          }
+          campaign.status = "scheduled";
+          campaign.scheduledAt = scheduledAt.toISOString();
+          campaign.updatedAt = timestamp();
+          addActivity(state, { type: "content", title: `${campaign.name} was scheduled`, detail: `Editorial execution at ${campaign.scheduledAt}` });
+          return state;
+        }
+        case "create-keyword-monitor": {
+          const keyword = String(body.keyword || "").trim();
+          if (!keyword || keyword.length < 2) throw new Error("Keyword must be at least two characters.");
+          if (state.keywordMonitors.some((monitor) => monitor.keyword.toLowerCase() === keyword.toLowerCase())) throw new Error("This keyword is already monitored.");
+          const monitor: KeywordMonitor = { id: createId("keyword"), keyword, status: "active", lastCheckedAt: null, matchCount: 0, latestSummary: null, createdAt: timestamp() };
+          state.keywordMonitors.unshift(monitor);
+          addActivity(state, { type: "system", title: `Monitoring ${keyword}`, detail: "Public web checks are ready to run" });
+          return state;
+        }
+        case "check-keyword": {
+          const monitor = state.keywordMonitors.find((candidate) => candidate.id === String(body.monitorId || ""));
+          if (!monitor) throw new Error("Keyword monitor not found.");
+          if (monitor.status !== "active") throw new Error("Resume the monitor before checking it.");
+          const result = await researchPublicKeyword(monitor.keyword);
+          monitor.lastCheckedAt = timestamp();
+          monitor.matchCount = result.matches.length;
+          monitor.latestSummary = result.matches.slice(0, 3).map((match) => match.title).join(" · ") || "No public matches found.";
+          addActivity(state, { type: "system", title: `${monitor.keyword} was checked`, detail: `${monitor.matchCount} public matches captured` });
+          return state;
+        }
+        case "toggle-keyword-monitor": {
+          const monitor = state.keywordMonitors.find((candidate) => candidate.id === String(body.monitorId || ""));
+          if (!monitor) throw new Error("Keyword monitor not found.");
+          monitor.status = body.active === false ? "paused" : "active";
+          return state;
+        }
+        case "create-inbound-agent": {
+          const name = String(body.name || "").trim();
+          if (!name) throw new Error("Agent name is required.");
+          const employeeId = String(body.employeeId || "").trim() || state.employees.find((employee) => employee.status === "live")?.id || null;
+          if (employeeId && !findEmployee(state, employeeId)) throw new Error("Assigned employee not found.");
+          const agent: InboundAgent = { id: createId("agent"), name, description: String(body.description || "Answer visitors with grounded workspace context.").trim(), employeeId, channel: (["website", "api", "widget"] as const).includes(body.channel as never) ? body.channel as InboundAgent["channel"] : "website", greeting: String(body.greeting || "How can we help?").trim(), status: "draft", createdAt: timestamp(), updatedAt: timestamp() };
+          state.inboundAgents.unshift(agent);
+          addActivity(state, { type: "system", title: `${name} was created`, detail: `Inbound agent · ${agent.channel} · draft` });
+          return state;
+        }
+        case "toggle-inbound-agent": {
+          const agent = state.inboundAgents.find((candidate) => candidate.id === String(body.agentId || ""));
+          if (!agent) throw new Error("Inbound agent not found.");
+          agent.status = body.active === false ? "paused" : "live";
+          agent.updatedAt = timestamp();
+          addActivity(state, { type: "system", title: `${agent.name} is ${agent.status}`, detail: "Inbound routing state updated" });
+          return state;
+        }
+        case "create-site": {
+          const name = String(body.name || "").trim();
+          const headline = String(body.headline || "").trim();
+          if (!name || !headline) throw new Error("Site name and headline are required.");
+          const kind = body.kind === "landing_page" ? "landing_page" : "website";
+          const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || createId("site");
+          const site: SiteRecord = { id: createId("site"), name, kind, slug, agentId: String(body.agentId || "").trim() || null, status: "draft", headline, body: String(body.body || "").trim(), createdAt: timestamp(), updatedAt: timestamp() };
+          state.sites.unshift(site);
+          addActivity(state, { type: "system", title: `${name} was created`, detail: `${kind.replace("_", " ")} · draft` });
+          return state;
+        }
+        case "publish-site": {
+          const site = state.sites.find((candidate) => candidate.id === String(body.siteId || ""));
+          if (!site) throw new Error("Site not found.");
+          site.status = "published";
+          site.updatedAt = timestamp();
+          addActivity(state, { type: "system", title: `${site.name} was published`, detail: `/site/${site.slug}` });
+          return state;
+        }
+        case "create-app": {
+          const name = String(body.name || "").trim();
+          if (!name) throw new Error("App name is required.");
+          const app: AppRecord = { id: createId("app"), name, description: String(body.description || "").trim() || "A workspace-native workflow.", type: (["workflow", "api", "mcp"] as const).includes(body.type as never) ? body.type as AppRecord["type"] : "workflow", employeeId: String(body.employeeId || "").trim() || null, status: "draft", createdAt: timestamp(), updatedAt: timestamp() };
+          if (app.employeeId && !findEmployee(state, app.employeeId)) throw new Error("Assigned employee not found.");
+          state.apps.unshift(app);
+          addActivity(state, { type: "system", title: `${name} was added to Apps`, detail: `${app.type} · draft` });
+          return state;
+        }
+        case "toggle-app": {
+          const app = state.apps.find((candidate) => candidate.id === String(body.appId || ""));
+          if (!app) throw new Error("App not found.");
+          app.status = body.active === false ? "draft" : "active";
+          app.updatedAt = timestamp();
+          addActivity(state, { type: "system", title: `${app.name} is ${app.status}`, detail: "Workspace app state updated" });
+          return state;
+        }
         case "create-ticket": {
           const subject = String(body.subject || "").trim();
           const message = String(body.message || "").trim();
@@ -932,9 +1161,9 @@ async function postWorkspace(request: Request): Promise<Response> {
     } catch {
       if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(updated), persisted: true, error: "The action was saved, but its audit record could not be stored." }, { status: 503 });
     }
-    if (action === "run-employee" || action === "evaluate-employee") {
+    if (["run-employee", "evaluate-employee", "run-scheduled"].includes(action)) {
       try {
-        await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: action === "run-employee" ? "employee_run" : "employee_evaluation", unit: "ai", units: 2 });
+        await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: action === "run-employee" ? "employee_run" : action === "evaluate-employee" ? "employee_evaluation" : "scheduled_run", unit: "ai", units: 2 });
       } catch {
         if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(updated), persisted: true, error: "The action was saved, but its usage record could not be stored." }, { status: 503 });
       }
@@ -942,6 +1171,13 @@ async function postWorkspace(request: Request): Promise<Response> {
     if (action === "enrich-row") {
       try {
         await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "public_research", unit: "data", units: 2 });
+      } catch {
+        if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(updated), persisted: true, error: "The research was saved, but its usage record could not be stored." }, { status: 503 });
+      }
+    }
+    if (action === "qualify-person") {
+      try {
+        await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "person_qualification", unit: "data", units: 2 });
       } catch {
         if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(updated), persisted: true, error: "The research was saved, but its usage record could not be stored." }, { status: 503 });
       }
