@@ -506,6 +506,52 @@ async function postWorkspace(request: Request): Promise<Response> {
       return json({ state: workspaceStateForClient(execution.state), appId, runId: execution.run.id, output: execution.run.output, provider: execution.result.provider }, { headers: rateLimitHeaders(identity.context) });
     }
 
+    if (action === "run-playbook") {
+      const current = await getWorkspace(companyId);
+      const playbook = current.playbooks.find((candidate) => candidate.id === String(body.playbookId || ""));
+      if (!playbook) return json({ error: "Playbook not found." }, { status: 404 });
+      if (!playbook.installedAt) return json({ error: "Install the playbook before running it." }, { status: 400 });
+      const employeeId = String(body.employeeId || "").trim();
+      const requestedEmployee = findEmployee(current, employeeId);
+      const employee = requestedEmployee?.status === "live"
+        ? requestedEmployee
+        : current.employees.find((candidate) => candidate.department === "Operations" && candidate.status === "live")
+          || current.employees.find((candidate) => candidate.status === "live");
+      if (!employee) return json({ error: "Create a live employee before running this playbook." }, { status: 400 });
+      if (current.workspace.aiCredits.remaining < 2) return json({ error: "Not enough AI Credits for this playbook run." }, { status: 402 });
+      const task = `Run the ${playbook.name} playbook.\n\nSteps:\n${playbook.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}\n\nUse the workspace sources, show what was completed, call out missing evidence, and finish with one owner and one next action.`;
+      const startedAt = Date.now();
+      const result = await generateEmployeeReply(employee, task, current.documents);
+      const next = await updateWorkspace(companyId, (state) => {
+        const liveEmployee = findEmployee(state, employee.id);
+        const livePlaybook = state.playbooks.find((candidate) => candidate.id === playbook.id);
+        if (!liveEmployee || !livePlaybook) return state;
+        const run = makeRun(state, liveEmployee, task, "manual", result, startedAt);
+        const mission: Mission = {
+          id: createId("mission"),
+          title: `${livePlaybook.name} · run`,
+          description: livePlaybook.steps.join(" "),
+          status: "needs_review",
+          priority: "normal",
+          employeeId: liveEmployee.id,
+          sourceDocumentIds: state.documents.map((document) => document.id),
+          output: result.content,
+          runId: run.id,
+          dueAt: null,
+          createdAt: run.createdAt,
+          updatedAt: run.createdAt,
+        };
+        state.missions.unshift(mission);
+        livePlaybook.lastRunAt = run.createdAt;
+        addActivity(state, { type: "playbook", title: `${livePlaybook.name} completed a run`, detail: `${liveEmployee.name} · score ${run.score} · mission ready for review` });
+        return state;
+      });
+      const mission = next.missions[0];
+      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.playbook_run", resourceType: "playbook", resourceId: playbook.id, metadata: { runId: mission?.runId || null, missionId: mission?.id || null } }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The playbook run was saved, but its audit record could not be stored." }, { status: 503 }); }
+      try { await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "playbook_run", unit: "ai", units: 2, provider: result.provider }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The playbook run was saved, but its usage record could not be stored." }, { status: 503 }); }
+      return json({ state: workspaceStateForClient(next), missionId: mission?.id || null, runId: mission?.runId || null, output: mission?.output || result.content, provider: result.provider }, { headers: rateLimitHeaders(identity.context) });
+    }
+
     if (action === "run-mission" || action === "generate-content") {
       const current = await getWorkspace(companyId);
       const mission = action === "run-mission" ? findMission(current, String(body.missionId || "")) : undefined;
@@ -649,15 +695,7 @@ async function postWorkspace(request: Request): Promise<Response> {
           return state;
         }
         case "run-playbook": {
-          const playbook = state.playbooks.find((candidate) => candidate.id === String(body.playbookId || ""));
-          if (!playbook) throw new Error("Playbook not found.");
-          if (!playbook.installedAt) throw new Error("Install the playbook before running it.");
-          const employeeId = String(body.employeeId || "").trim() || state.employees.find((employee) => employee.department === "Operations")?.id || state.employees[0]?.id || null;
-          const mission: Mission = { id: createId("mission"), title: `${playbook.name} · next run`, description: playbook.steps.join(" "), status: "ready", priority: "normal", employeeId, sourceDocumentIds: [], output: null, runId: null, dueAt: null, createdAt: timestamp(), updatedAt: timestamp() };
-          state.missions.unshift(mission);
-          playbook.lastRunAt = mission.createdAt;
-          addActivity(state, { type: "playbook", title: `${playbook.name} created a mission`, detail: employeeId ? `Assigned to ${findEmployee(state, employeeId)?.name}` : "Assign an operator to run it" });
-          return state;
+          throw new Error("Playbook runs are executed before state mutation.");
         }
         case "create-employee": {
           const title = String(body.title || "").trim();
@@ -1288,7 +1326,8 @@ async function postWorkspace(request: Request): Promise<Response> {
           if (!name || !headline) throw new Error("Site name and headline are required.");
           const kind = body.kind === "landing_page" ? "landing_page" : "website";
           const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || createId("site");
-          const site: SiteRecord = { id: createId("site"), name, kind, slug, agentId: String(body.agentId || "").trim() || null, status: "draft", headline, body: String(body.body || "").trim(), createdAt: timestamp(), updatedAt: timestamp() };
+          const agentId = String(body.agentId || "").trim() || state.inboundAgents.find((agent) => agent.status === "live")?.id || null;
+          const site: SiteRecord = { id: createId("site"), name, kind, slug, agentId, status: "draft", headline, body: String(body.body || "").trim(), createdAt: timestamp(), updatedAt: timestamp() };
           state.sites.unshift(site);
           addActivity(state, { type: "system", title: `${name} was created`, detail: `${kind.replace("_", " ")} · draft` });
           return state;
@@ -1296,6 +1335,9 @@ async function postWorkspace(request: Request): Promise<Response> {
         case "publish-site": {
           const site = state.sites.find((candidate) => candidate.id === String(body.siteId || ""));
           if (!site) throw new Error("Site not found.");
+          if (!site.agentId) throw new Error("Attach a live inbound agent before publishing this site.");
+          const agent = state.inboundAgents.find((candidate) => candidate.id === site.agentId && candidate.status === "live");
+          if (!agent) throw new Error("The site's inbound agent must be live before publishing.");
           site.status = "published";
           site.updatedAt = timestamp();
           addActivity(state, { type: "system", title: `${site.name} was published`, detail: `/site/${site.slug}` });
