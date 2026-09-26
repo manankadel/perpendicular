@@ -2,15 +2,18 @@
 
 [![Publish Perpendicular image](https://github.com/manankadel/perpendicular/actions/workflows/perpendicular-image.yml/badge.svg)](https://github.com/manankadel/perpendicular/actions/workflows/perpendicular-image.yml)
 
-Perpendicular is an open-source AI work system for small teams. It turns a real workspace source, a named employee, scoped knowledge, a scheduled task, and a visible evaluation trace into one operational loop.
+Perpendicular is an open-source AI work system for small teams. It turns real workspace context into a scoped operator pod, durable missions, reviewable content, scheduled work, and visible evaluation traces.
 
 The production shape is deliberate: Vercel serves the browser UI; the Dell runs the API, Postgres, Ollama, and durable integration data. Blueblood ID is the identity authority. Gmail is an explicit OAuth connection with encrypted refresh-token storage, persisted inbox messages, and reply-pause behavior.
 
 ## Functional surface
 
 - Perpendicular-hosted sign-in with password and MFA handoff to Blueblood ID, plus product membership and workspace isolation.
-- First-run workspace discovery: infer a public company URL from the signed-in business email, fetch real public context, create a goal-specific operator, and run a persisted first brief before showing the workbench.
+- First-run workspace discovery: infer a public company URL from the signed-in business email, fetch real public context, create a four-role operator pod with a company profile, mission queue, and first content brief, then run a persisted first mission before showing the workbench.
 - Employee creation, prompt versions, golden evaluations, chat, manual runs, schedules, and heartbeat execution.
+- Mission queue with delegation, local-model runs, human review, approval, completion, due dates, and audit activity.
+- Grounded content workflow with editorial briefs, draft generation, review, approval, scheduling, and explicit publish state.
+- Transparent playbook catalog that installs and creates durable missions instead of hiding automation behind fake buttons.
 - Knowledge capture from pasted text or a public URL, with scoped retrieval and citations.
 - Smart List creation, lead import, public company research, dedupe, credit accounting, and sequence enrollment gates.
 - Draft sequences with suppression/reply-pause state. No external email is sent unless Gmail is connected and a send command is explicitly called.

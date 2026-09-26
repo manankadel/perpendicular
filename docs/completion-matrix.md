@@ -8,7 +8,12 @@ This is the implementation truth for the supplied product and audit documents. A
 | --- | --- | --- |
 | Product-owned sign-in with Blueblood ID session authority | Live | `src/app/api/auth/*`, `src/lib/identity.ts`, auth tests |
 | Workspace discovery from a real public URL or operator brief | Live | `bootstrap-workspace`, `src/lib/public-research.ts` |
+| Discovery creates a usable operator pod, company profile, missions, and first content brief | Live | `buildOnboardingArtifacts`, `bootstrap-workspace`, onboarding UI, domain migration tests |
 | Employee → scoped knowledge → local Ollama run → score → trace | Live | `run-employee`, `llm.ts`, `Run.trace`, domain tests |
+| Mission queue with run → review → approve, delegation, due dates, and audit activity | Live at launch scope | `run-mission`, `approve-mission`, `delegate-mission`, Missions view |
+| Grounded content workflow with draft → review → approve → schedule → publish state | Live at launch scope | `generate-content`, `approve-content`, `schedule-content`, Content view |
+| Inspectable playbook catalog that creates durable missions | Live at launch scope | `install-playbook`, `run-playbook`, Playbooks view |
+| Compatibility migration for existing one-operator workspaces | Live | `normalizeWorkspaceState`, `server-store.ts`, legacy migration test |
 | Prompt versions, golden tests, evaluate, activate, rollback | Live | Employee detail UI and workspace actions |
 | Heartbeat scheduling with Postgres-leased idempotency | Live | `src/lib/job-store.ts`, heartbeat route, job tests |
 | Smart Lists, public research, dedupe, credit decrement, sequence enrollment | Live at launch scope | Workspace actions and UI |
@@ -22,7 +27,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Workspace JSON/CSV export and owner-confirmed deletion | Implemented; destructive E2E pending | `/api/workspace/export`, `/api/workspace/privacy` |
 | Webhook catalog and dead-letter replay controls | Implemented; provider E2E pending | `/api/ops`, Settings → Operations |
 | Operational health counts for dead letters, failed webhooks, and degraded integrations | Live in code; deployed verification pending | `/api/health` |
-| Read-only production smoke gate | Live in code; current Dell image fails until the next release is promoted | `npm run smoke:production`, `scripts/production-smoke.mjs` |
+| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:51b3ec17…`, 2026-09-26 |
 | CI verification before image publication | Live | `.github/workflows/perpendicular-image.yml` runs check and production audit before publish |
 
 ## Dated launch-audit fixes
@@ -33,7 +38,7 @@ The supplied launch-readiness PDF is a dated audit. Its F-01–F-08 items reconc
 | --- | --- | --- |
 | F-01 credit seed drift | Closed in code; production empty-state behavior is tested | `createEmptyState`, production seed contract in `tests/domain.test.ts` |
 | F-02 stale navigation counts | Closed in code | `navCount()` in `src/components/PerpendicularConsole.tsx` |
-| F-03 heartbeat idempotency | Implemented; Dell verification pending | Postgres lease/idempotency path in `src/lib/job-store.ts`, heartbeat route and job tests |
+| F-03 heartbeat idempotency | Implemented and Dell health-verified | Postgres lease/idempotency path in `src/lib/job-store.ts`, heartbeat route and job tests |
 | F-04 API-key rate limits | Implemented with bounded per-process fallback; distributed Redis limiter remains a scale seam | `src/lib/rate-limit.ts`, API-key tests |
 | F-05 Gmail renewal and webhook dedupe | Implemented; provider E2E pending | `src/app/api/webhooks/gmail/route.ts`, `src/lib/integration-store.ts`, `db/003_gmail_events_health.sql` |
 | F-06 origin-check unification | Closed in code | `src/lib/cors.ts`, `src/lib/security.ts`, CORS tests |
@@ -52,21 +57,20 @@ These are present in the comparison/audit documents but are not silently faked i
 
 ## Remaining launch evidence
 
-The code is launchable for the documented open-source launch scope after the additive usage migration is applied. Public launch evidence still requires real external state:
+The code is launchable for the documented open-source launch scope. Public launch evidence still requires real external state:
 
-1. Apply `db/004_usage_ledger.sql` to the dedicated Dell database.
-2. Configure and retrieve an offsite backup through `PERPENDICULAR_BACKUP_REMOTE`.
-3. Run an authenticated Gmail OAuth → test-send → reply → sync → sequence-pause test with a mailbox the operator controls.
-4. Run a second-workspace isolation test against the deployed Blueblood ID memberships.
-5. Run the final production browser/API smoke suite after the next image is promoted.
+1. Configure and retrieve an offsite backup through `PERPENDICULAR_BACKUP_REMOTE`.
+2. Run an authenticated Gmail OAuth → test-send → reply → sync → sequence-pause test with a mailbox the operator controls.
+3. Run a second-workspace isolation test against the deployed Blueblood ID memberships.
+4. Run the final authenticated browser walkthrough against the promoted UI and API.
 
 None of these are replaced with sample data or a green UI state.
 
 ## Observed release state
 
-Read-only checks on 2026-09-10 found:
+Read-only checks on 2026-09-26 found:
 
-- The live API is healthy on image `98d0c7d1d6e17c9dd4eaabedad3e26712e516577`; the locally verified source is ahead of `origin/main` and has not been promoted.
-- Dell has the workspace, platform, and Gmail event/health tables (migrations 001–003). The additive usage ledger migration (004) is not applied yet.
+- The live API is healthy on image `sha256:51b3ec17bbaeb3d1033ad1b2f79e263ebd10be8a6b88520dd6b0a5b751c9db1b`, version `2e0accc913bec2ba7a7953b1bfc447ff351cd078`; the production smoke suite passed all seven checks.
+- Dell reports all required workspace, platform, Gmail event/health, and usage-ledger tables present; schema health has no missing tables.
 - Dell local backups exist and restore rehearsal passed, but the rclone configuration and offsite remote are absent.
-- Gmail OAuth client ID and secret are empty on the live container, so provider E2E cannot pass yet. Blueblood ID's deployed portal also has no Google OAuth client variables, so product Google sign-in requires provider configuration before it can be verified.
+- Product-owned Google sign-in/MFA and Gmail OAuth have been verified in the live flow; the complete test-send → reply → sync → sequence-pause evidence is still outstanding.
