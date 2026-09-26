@@ -39,8 +39,10 @@ test("production startup does not mutate the database schema", () => {
 });
 
 test("database-backed workspace writes are serialized per workspace", () => {
-  assert.match(serverStore, /pg_advisory_lock\(hashtextextended\(\$1, 0\)\)/);
-  assert.match(serverStore, /pg_advisory_unlock\(hashtextextended\(\$1, 0\)\)/);
+  assert.match(serverStore, /begin/);
+  assert.match(serverStore, /pg_advisory_xact_lock\(hashtextextended\(\$1, 0\)\)/);
+  assert.match(serverStore, /saveWorkspaceWithClient\(client, companyId, next\)/);
+  assert.match(serverStore, /commit/);
 });
 
 test("production health fails closed when required migrations are missing", () => {

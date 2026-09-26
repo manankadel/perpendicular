@@ -127,12 +127,7 @@ export async function getWorkspace(companyId = defaultCompanyId): Promise<Worksp
 export async function saveWorkspace(companyId: string, state: WorkspaceState) {
   const database = await getPool();
   if (database) {
-    await database.query(
-      `insert into perpendicular_workspace_state (company_id, state, updated_at)
-       values ($1, $2::jsonb, now())
-       on conflict (company_id) do update set state = excluded.state, updated_at = now()`,
-      [companyId, JSON.stringify(state)],
-    );
+    await saveWorkspaceWithClient(database, companyId, state);
     return state;
   }
 
@@ -146,6 +141,15 @@ export async function saveWorkspace(companyId: string, state: WorkspaceState) {
   return state;
 }
 
+async function saveWorkspaceWithClient(client: { query: (text: string, values?: unknown[]) => Promise<unknown> }, companyId: string, state: WorkspaceState) {
+  await client.query(
+    `insert into perpendicular_workspace_state (company_id, state, updated_at)
+     values ($1, $2::jsonb, now())
+     on conflict (company_id) do update set state = excluded.state, updated_at = now()`,
+    [companyId, JSON.stringify(state)],
+  );
+}
+
 export async function updateWorkspace(
   companyId: string,
   update: (state: WorkspaceState) => WorkspaceState | Promise<WorkspaceState>,
@@ -154,13 +158,23 @@ export async function updateWorkspace(
   if (database) {
     const client = await database.connect();
     try {
-      await client.query("select pg_advisory_lock(hashtextextended($1, 0))", [companyId]);
-      const current = await getWorkspace(companyId);
+      await client.query("begin");
+      await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [companyId]);
+      const result = await client.query<{ state: WorkspaceState }>(
+        "select state from perpendicular_workspace_state where company_id = $1",
+        [companyId],
+      );
+      const current = result.rows[0]?.state
+        ? normalizeWorkspaceState(result.rows[0].state, companyId)
+        : createInitialState(companyId);
       const next = await update(current);
-      await saveWorkspace(companyId, next);
+      await saveWorkspaceWithClient(client, companyId, next);
+      await client.query("commit");
       return next;
+    } catch (error) {
+      await client.query("rollback").catch(() => undefined);
+      throw error;
     } finally {
-      await client.query("select pg_advisory_unlock(hashtextextended($1, 0))", [companyId]).catch(() => undefined);
       client.release();
     }
   }
