@@ -29,6 +29,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Workspace JSON/CSV export and owner-confirmed deletion | Implemented; destructive E2E pending | `/api/workspace/export`, `/api/workspace/privacy` |
 | Webhook catalog and dead-letter replay controls | Implemented; provider E2E pending | `/api/ops`, Settings → Operations |
 | Operational health counts for dead letters, failed webhooks, and degraded integrations | Live and deployed | `/api/health`, required schema includes outbound send records |
+| Dell local backup schedule and clean-database restore rehearsal | Live locally; offsite copy pending | Root cron at 02:15, verified custom-format dump, restore into `perpendicular_restore_check` with 13 platform tables |
 | Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:32329258…`, build `2a3e6ba`, eight checks, 2026-09-26 |
 | Dell heartbeat trigger | Live and verified on the host | Root-owned `/usr/local/sbin/perpendicular-heartbeat`, `flock` lock, API-origin request, and successful authenticated tick on 2026-09-26 |
 | CI verification before image publication | Live | `.github/workflows/perpendicular-image.yml` runs check and production audit before publish |
@@ -71,12 +72,13 @@ None of these are replaced with sample data or a green UI state.
 
 ## Observed release state
 
-Read-only checks on 2026-09-26 found:
+Read-only checks on 2026-09-27 found:
 
 - The live API is healthy on promoted immutable image `2a3e6ba` (`sha256:323292589df40596ab90c6041f40326557f32732e69453eac59b83ae841d91c8`); the production smoke suite passed all eight checks, including the public widget entry route.
 - The onboarding proof now attaches the scored first run to the first real mission, so opening the workbench produces a reviewable mission instead of an empty queue.
 - The Dell host heartbeat is installed as a root-owned helper with a non-overlap lock and calls `https://perpendicular-api.bluebloodstudio.com/api/cron/heartbeat`; an authenticated tick returned successfully.
 - Dell reports all required workspace, platform, Gmail event/health, usage-ledger, and outbound-message tables present; schema health has no missing tables.
 - The API-key rate-limit table is applied additively on Dell; the transactional workspace write path, outbound safety guardrails, CSV lead import, and public widget are live on the promoted image.
-- Dell local backups exist and restore rehearsal passed, but the rclone configuration and offsite remote are absent.
+- Dell local backups are scheduled at 02:15, a fresh dump was created, and restore rehearsal into `perpendicular_restore_check` succeeded with one workspace row and 13 platform tables; the rclone configuration and offsite remote are absent.
+- The canonical login UI and self-serve workspace form load in Chrome. The available browser session had no authenticated Perpendicular cookie, so the signed-in browser walkthrough and provider side-effect test remain unproven rather than being marked green.
 - Product-owned Google sign-in/MFA and Gmail OAuth are implemented and configured; an authenticated browser walkthrough and the complete test-send → reply → sync → sequence-pause evidence are still outstanding.
