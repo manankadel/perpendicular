@@ -443,6 +443,8 @@ function SequencesView({ state, mutate, setShowSequence }: { state: WorkspaceSta
   const nextRow = list?.rows.find((row) => row.status === "enriched" && row.enrollmentStatus !== "enrolled");
   const enrollAction = !list || !nextSequence || !nextRow
     ? <button className="button-secondary" disabled><Send size={13} />No researched row ready</button>
+    : nextSequence.status !== "live"
+      ? <button className="button-secondary" disabled><Check size={13} />Activate sequence before enrolling</button>
     : gmailConnected
       ? <button className="button-secondary" onClick={() => void mutate("enroll-row", { listId: list.id, rowId: nextRow.id, sequenceId: nextSequence.id }, "The next researched row entered the sequence.")}><Send size={13} />Enroll next researched row</button>
       : <a className="button-secondary" href={apiPath("/api/integrations/google/start")}><Mail size={13} />Connect Gmail to enroll</a>;

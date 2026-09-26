@@ -1045,6 +1045,7 @@ async function postWorkspace(request: Request): Promise<Response> {
           const row = list?.rows.find((item) => item.id === String(body.rowId || ""));
           const sequence = state.sequences.find((item) => item.id === String(body.sequenceId || ""));
           if (!list || !row || !sequence) throw new Error("Lead or sequence not found.");
+          if (sequence.status !== "live") throw new Error("Activate the sequence after reviewing its steps before enrolling a lead.");
           if (row.status !== "enriched") throw new Error("Research the lead before enrolling it.");
           if (state.suppressedEmails.includes(row.email.toLowerCase())) throw new Error("This address is suppressed and cannot enter a sequence.");
           if (row.enrollmentStatus === "enrolled") return state;
