@@ -373,6 +373,18 @@ async function postWorkspace(request: Request): Promise<Response> {
       const task = employee.goldenTests[0]?.input || "Review the workspace and propose the three highest-leverage next actions for this week.";
       const startedAt = Date.now();
       const result = await generateEmployeeReply(employee, task, current.documents);
+      const launchContent = current.content[0];
+      const launchContentEmployee = launchContent
+        ? findEmployee(current, launchContent.employeeId || "") || employee
+        : null;
+      let launchContentResult: LlmResult | null = null;
+      if (launchContent && launchContentEmployee && current.workspace.aiCredits.remaining >= 4) {
+        try {
+          launchContentResult = await generateEmployeeReply(launchContentEmployee, `Create a ${launchContent.channel} draft titled "${launchContent.title}". Objective: ${launchContent.objective}. Use only the discovered workspace context, preserve the company's voice, avoid unsupported claims, and include one note about evidence that still needs review.`, current.documents);
+        } catch {
+          launchContentResult = null;
+        }
+      }
       const next = await updateWorkspace(companyId, (state) => {
         if (state.workspace.onboarding.runId) return state;
         const liveEmployee = findEmployee(state, employee.id);
@@ -386,13 +398,26 @@ async function postWorkspace(request: Request): Promise<Response> {
           firstMission.runId = run.id;
           firstMission.updatedAt = run.createdAt;
         }
+        if (launchContent && launchContentResult && launchContentEmployee) {
+          const liveContent = findContent(state, launchContent.id);
+          const liveContentEmployee = findEmployee(state, launchContentEmployee.id);
+          if (liveContent && liveContentEmployee) {
+            const contentRun = makeRun(state, liveContentEmployee, `Create a ${liveContent.channel} draft titled "${liveContent.title}". Objective: ${liveContent.objective}.`, "manual", launchContentResult, startedAt);
+            liveContent.status = "review";
+            liveContent.body = launchContentResult.content;
+            liveContent.employeeId = liveContentEmployee.id;
+            liveContent.missionId = firstMission?.id || null;
+            liveContent.updatedAt = contentRun.createdAt;
+            addActivity(state, { type: "content", title: `${liveContent.title} is ready for review`, detail: `${liveContentEmployee.name} · first launch draft · score ${contentRun.score}` });
+          }
+        }
         state.workspace.onboarding.status = "proved";
         state.workspace.onboarding.runId = run.id;
         addActivity(state, { type: "run", title: `${liveEmployee.name} delivered the first brief`, detail: `Score ${run.score} · ${firstMission ? `${firstMission.title} is ready for review` : `grounded in ${state.documents[0]?.name || "workspace context"}`}`, });
         return state;
       });
       try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.onboarding_run", resourceType: "employee", resourceId: employee.id }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The brief was saved, but its audit record could not be stored." }, { status: 503 }); }
-      try { await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "onboarding_brief", unit: "ai", units: 2 }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The brief was saved, but its usage record could not be stored." }, { status: 503 }); }
+      try { await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "onboarding_brief", unit: "ai", units: launchContentResult ? 4 : 2 }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The brief was saved, but its usage record could not be stored." }, { status: 503 }); }
       return json(workspaceStateForClient(next));
     }
 
