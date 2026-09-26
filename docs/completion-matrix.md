@@ -61,12 +61,12 @@ These are present in the comparison/audit documents but are not silently faked i
 
 ## Remaining launch evidence
 
-The code is launchable for the documented open-source launch scope. The Dell API and public UI are live, but the Git-triggered Vercel release path still needs an account-level Login Connection fix. Public launch evidence still requires real external state:
+The code is launchable for the documented open-source launch scope. The Dell API and public UI are live. The repository is now public at `github.com/manankadel/perpendicular`; a fresh Git-triggered Vercel release is required to verify that the Hobby-team private-repository restriction is gone. Public launch evidence still requires real external state:
 
 1. Configure a cloud backup remote through `PERPENDICULAR_BACKUP_REMOTE` for disaster recovery beyond the existing off-machine Mac copy.
 2. Run an authenticated Gmail OAuth → test-send → reply → sync → sequence-pause test with a mailbox the operator controls.
 3. Run a second-workspace isolation test against the deployed Blueblood ID memberships.
-4. Resolve the Vercel Git deployment block so future `main` pushes promote automatically, then run the final authenticated browser walkthrough against the Git-connected UI and API.
+4. Verify a fresh Git-triggered Vercel deployment promotes automatically, then run the final authenticated browser walkthrough against the Git-connected UI and API.
 
 None of these are replaced with sample data or a green UI state.
 
@@ -76,7 +76,7 @@ Read-only checks on 2026-09-27 found:
 
 - The live API is healthy on promoted immutable image `497f475` (`sha256:515d61829fb5bb26aa052ef15c1daedf9bcd2145dac5bc15e522c6308b8edd05`); the production smoke suite passed all eight checks, including the public widget entry route.
 - The authenticated browser session reaches the live workbench and completed a real mission through Dell → Ollama → Postgres; the API now also identifies Perpendicular correctly in the same chat path instead of borrowing another product identity.
-- The verified UI is live on the existing public aliases through direct source deployment `dpl_1UtWAFRz4LiJDyan7u1VC1PuNiu7` (`perpendicular-nine.vercel.app`, promoted 2026-09-27). Git-triggered deployments from `main` are still blocked before alias promotion because the Hobby team cannot associate the private-repository commit author with the owning Vercel Login Connection; the release is usable now, but automatic Git promotion is not yet closed.
+- The verified UI is live on the existing public aliases through direct source deployment `dpl_1UtWAFRz4LiJDyan7u1VC1PuNiu7` (`perpendicular-nine.vercel.app`, promoted 2026-09-27). The GitHub repository is now public; the next fresh `main` deployment is the authoritative check that Vercel automatic promotion is closed.
 - The onboarding proof now attaches the scored first run to the first real mission, so opening the workbench produces a reviewable mission instead of an empty queue.
 - The compatibility migration was exercised against the existing `blueblood-studio` workspace: the Dell row now persists `seq-onboarding-blueblood-studio` with all five draft steps, without resetting the workspace.
 - The Dell host heartbeat is installed as a root-owned helper with a non-overlap lock and calls `https://perpendicular-api.bluebloodstudio.com/api/cron/heartbeat`; an authenticated tick returned successfully.
