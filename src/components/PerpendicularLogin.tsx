@@ -11,9 +11,10 @@ type LoginResponse = {
   requiresMfa?: boolean;
   mfaToken?: string;
   types?: string[];
+  error?: string;
 };
 
-export default function PerpendicularLogin({ next }: { next: string }) {
+export default function PerpendicularLogin({ next, initialError }: { next: string; initialError?: string }) {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,7 +25,7 @@ export default function PerpendicularLogin({ next }: { next: string }) {
   const [mfaToken, setMfaToken] = useState<string | null>(null);
   const [mfaType, setMfaType] = useState<"totp" | "backup">("totp");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError || null);
 
   useEffect(() => {
     if (canonicalOrigin && window.location.hostname === "perpendicular-nine.vercel.app") {
@@ -59,6 +60,14 @@ export default function PerpendicularLogin({ next }: { next: string }) {
         setMfaToken(data.mfaToken);
         setCode("");
         return;
+      }
+      const sessionCheck = await fetch(`${apiBase}/api/workspace`, { credentials: "include", cache: "no-store" });
+      if (sessionCheck.status === 401) {
+        throw new Error("Your credentials were accepted, but the workspace session was not established. Try again or use Google sign-in.");
+      }
+      if (!sessionCheck.ok && sessionCheck.status !== 503) {
+        const sessionData = await sessionCheck.json().catch(() => ({})) as LoginResponse;
+        throw new Error(sessionData.error || "Your session could not be verified. Try again.");
       }
       window.location.assign(next);
     } catch (submissionError) {

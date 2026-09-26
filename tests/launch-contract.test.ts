@@ -212,6 +212,13 @@ test("Workbench runs expose persisted output and trace inspection", () => {
   assert.match(console, /Inspect/);
 });
 
+test("the console keeps persisted workspace state when audit logging returns a warning", () => {
+  const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
+  assert.match(console, /persisted\?: boolean/);
+  assert.match(console, /!response\.ok && !data\.persisted/);
+  assert.match(console, /Saved\. \$\{data\.error\}/);
+});
+
 test("Smart List scores expose their actual reasons", () => {
   const domain = readFileSync(join(root, "src/lib/domain.ts"), "utf8");
   const scoring = readFileSync(join(root, "src/lib/lead-scoring.ts"), "utf8");
