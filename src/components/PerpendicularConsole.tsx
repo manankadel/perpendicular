@@ -37,7 +37,7 @@ import type { DeadLetterJob } from "@/lib/job-store";
 import type { WebhookEventSummary } from "@/lib/integration-store";
 
 type View = "overview" | "missions" | "employees" | "knowledge" | "content" | "lists" | "sequences" | "inbox" | "playbooks" | "activity" | "settings";
-type Mutation = (action: string, payload?: Record<string, unknown>, success?: string) => Promise<void>;
+type Mutation = (action: string, payload?: Record<string, unknown>, success?: string) => Promise<WorkspaceState | null>;
 type Viewer = { email: string; firstName: string; lastName: string };
 type OpsSummary = { webhooks: WebhookEventSummary[]; deadLetterJobs: DeadLetterJob[] };
 
@@ -232,8 +232,10 @@ function ListsView({ state, mutate: providedMutate, setShowList, setShowLead }: 
       const response = await fetch(apiPath("/api/workspace"), { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...payload }) });
       if (!response.ok) throw new Error(await responseError(response, "Action failed. Refresh and try again."));
       window.location.reload();
+      return null;
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Action failed. Refresh and try again.");
+      return null;
     }
   });
   const [filter, setFilter] = useState("");
@@ -365,9 +367,13 @@ function OnboardingView({ state, viewer, mutate, busyAction }: { state: Workspac
   const firstRun = onboarding.runId ? state.runs.find((run) => run.id === onboarding.runId) : null;
   const source = onboarding.documentId ? state.documents.find((document) => document.id === onboarding.documentId) : null;
   const gmail = state.integrations?.find((integration) => integration.provider === "gmail");
+  const discoverWorkspace = async () => {
+    const discovered = await mutate("bootstrap-workspace", { goal, companyUrl: companyUrl.trim(), companyDescription: companyDescription.trim() }, "Workspace discovered. Running the first grounded brief…");
+    if (discovered) await mutate("run-onboarding-brief", {}, "Workspace discovered and the first grounded brief is ready.");
+  };
 
   if (onboarding.status === "not_started") {
-    return <div className="onboarding-shell"><div className="onboarding-intro"><div className="eyebrow">Perpendicular setup</div><h1 className="page-title">Let the system learn the work.</h1><p className="page-subtitle">Give Perpendicular one real source and a priority. It builds a small operator pod, creates the first mission queue, and proves the loop before asking you to automate anything.</p><div className="onboarding-steps"><div className="onboarding-step active"><span>01</span><div><strong>Discover</strong><small>Read your real context</small></div></div><div className="onboarding-step"><span>02</span><div><strong>Prove</strong><small>Run a grounded mission</small></div></div><div className="onboarding-step"><span>03</span><div><strong>Repeat</strong><small>Turn on the daily rhythm</small></div></div></div></div><section className="onboarding-card"><div className="onboarding-card-heading"><div><div className="eyebrow">One source. A working pod. A decision queue.</div><h2>What should Perpendicular own first?</h2></div><span className="onboarding-badge">No fake data</span></div><div className="goal-grid">{goalOptions.map((option) => <button className={`goal-option ${goal === option.id ? "selected" : ""}`} onClick={() => setGoal(option.id)} key={option.id}><span className="goal-radio" /> <span><strong>{option.label}</strong><small>{option.detail}</small></span></button>)}</div><div className="field"><label htmlFor="onboarding-url">Public company URL</label><input id="onboarding-url" type="url" value={companyUrl} onChange={(event) => setCompanyUrl(event.target.value)} placeholder="https://yourcompany.com" /><small className="field-hint">We inspect only this public page. No credentials or private mailbox data is read.</small></div><div className="field"><label htmlFor="onboarding-description">If you do not have a public site, describe the work</label><textarea id="onboarding-description" value={companyDescription} onChange={(event) => setCompanyDescription(event.target.value)} placeholder="Optional fallback: what your team sells, who it serves, and what is currently stuck." /></div><button className="button-primary onboarding-submit" disabled={discovering || (!companyUrl.trim() && companyDescription.trim().length < 40)} onClick={() => void mutate("bootstrap-workspace", { goal, companyUrl: companyUrl.trim(), companyDescription: companyDescription.trim() }, "Workspace discovered. Your operator pod and first missions are ready.")}>{discovering ? "Reading your workspace…" : "Discover and build my workspace"}<ArrowUpRight size={13} /></button><p className="onboarding-footnote">This creates one real knowledge source, four scoped operators, and a mission queue in your Dell-backed workspace. It does not invent leads, send email, or enable automation.</p></section></div>;
+    return <div className="onboarding-shell"><div className="onboarding-intro"><div className="eyebrow">Perpendicular setup</div><h1 className="page-title">Let the system learn the work.</h1><p className="page-subtitle">Give Perpendicular one real source and a priority. It builds a small operator pod, creates the first mission queue, and proves the loop before asking you to automate anything.</p><div className="onboarding-steps"><div className="onboarding-step active"><span>01</span><div><strong>Discover</strong><small>Read your real context</small></div></div><div className="onboarding-step"><span>02</span><div><strong>Prove</strong><small>Run a grounded mission</small></div></div><div className="onboarding-step"><span>03</span><div><strong>Repeat</strong><small>Turn on the daily rhythm</small></div></div></div></div><section className="onboarding-card"><div className="onboarding-card-heading"><div><div className="eyebrow">One source. A working pod. A decision queue.</div><h2>What should Perpendicular own first?</h2></div><span className="onboarding-badge">No fake data</span></div><div className="goal-grid">{goalOptions.map((option) => <button className={`goal-option ${goal === option.id ? "selected" : ""}`} onClick={() => setGoal(option.id)} key={option.id}><span className="goal-radio" /> <span><strong>{option.label}</strong><small>{option.detail}</small></span></button>)}</div><div className="field"><label htmlFor="onboarding-url">Public company URL</label><input id="onboarding-url" type="url" value={companyUrl} onChange={(event) => setCompanyUrl(event.target.value)} placeholder="https://yourcompany.com" /><small className="field-hint">We inspect only this public page. No credentials or private mailbox data is read.</small></div><div className="field"><label htmlFor="onboarding-description">If you do not have a public site, describe the work</label><textarea id="onboarding-description" value={companyDescription} onChange={(event) => setCompanyDescription(event.target.value)} placeholder="Optional fallback: what your team sells, who it serves, and what is currently stuck." /></div><button className="button-primary onboarding-submit" disabled={discovering || briefing || (!companyUrl.trim() && companyDescription.trim().length < 40)} onClick={() => void discoverWorkspace()}>{discovering ? "Reading your workspace…" : briefing ? "Running the first brief…" : "Discover and start my workspace"}<ArrowUpRight size={13} /></button><p className="onboarding-footnote">This creates one real knowledge source, four scoped operators, a mission queue, and the first grounded brief in your Dell-backed workspace. It does not invent leads, send email, or enable automation.</p></section></div>;
   }
 
   if (onboarding.status === "ready") {
@@ -557,8 +563,10 @@ export default function PerpendicularConsole() {
       }
       if (!response.ok || !nextState) throw new Error(data.error || "Action failed.");
       setNotice(success || "Saved.");
+      return nextState;
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Action failed.");
+      return null;
     } finally {
       setBusyAction(null);
     }
@@ -574,9 +582,10 @@ export default function PerpendicularConsole() {
   const activeLabel = viewNames[activeView];
   const navigation = useMemo(() => navGroups.flatMap((group) => group.items), []);
 
-  const submitEmployee = (event: React.FormEvent<HTMLFormElement>) => {
+  const submitEmployee = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    void mutate("create-employee", employeeForm, `${employeeForm.name || "New employee"} joined the team.`);
+    const saved = await mutate("create-employee", employeeForm, `${employeeForm.name || "New employee"} joined the team.`);
+    if (!saved) return;
     setShowHire(false);
     setEmployeeForm({ name: "", title: "", department: "Growth", systemPrompt: "" });
   };
@@ -590,7 +599,8 @@ export default function PerpendicularConsole() {
         payload.fileType = documentFile.type;
         payload.fileData = await fileToBase64(documentFile);
       }
-      await mutate("create-document", payload, `${documentForm.name || documentFile?.name || "The source"} is indexed and available to live employees.`);
+      const saved = await mutate("create-document", payload, `${documentForm.name || documentFile?.name || "The source"} is indexed and available to live employees.`);
+      if (!saved) return;
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "The source could not be read.");
       return;
@@ -600,30 +610,34 @@ export default function PerpendicularConsole() {
     setDocumentFile(null);
   };
 
-  const submitList = (event: React.FormEvent<HTMLFormElement>) => {
+  const submitList = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    void mutate("create-list", listForm, `${listForm.name} is ready for lead imports.`);
+    const saved = await mutate("create-list", listForm, `${listForm.name} is ready for lead imports.`);
+    if (!saved) return;
     setShowList(false);
     setListForm({ name: "", description: "" });
   };
 
-  const submitLead = (event: React.FormEvent<HTMLFormElement>) => {
+  const submitLead = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    void mutate("import-row", { listId: state?.lists[0]?.id, ...leadForm }, `${leadForm.name} was added to the list.`);
+    const saved = await mutate("import-row", { listId: state?.lists[0]?.id, ...leadForm }, `${leadForm.name} was added to the list.`);
+    if (!saved) return;
     setShowLead(false);
     setLeadForm({ name: "", email: "", company: "", role: "", location: "" });
   };
 
-  const submitSequence = (event: React.FormEvent<HTMLFormElement>) => {
+  const submitSequence = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    void mutate("create-sequence", sequenceForm, `${sequenceForm.name} was created as a draft.`);
+    const saved = await mutate("create-sequence", sequenceForm, `${sequenceForm.name} was created as a draft.`);
+    if (!saved) return;
     setShowSequence(false);
     setSequenceForm({ name: "", audience: "", subject: "", body: "" });
   };
 
-  const submitTicket = (event: React.FormEvent<HTMLFormElement>) => {
+  const submitTicket = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    void mutate("create-ticket", ticketForm, "Ticket opened with a priority-based SLA.");
+    const saved = await mutate("create-ticket", ticketForm, "Ticket opened with a priority-based SLA.");
+    if (!saved) return;
     setShowTicket(false);
     setTicketForm({ subject: "", message: "", priority: "normal" });
   };
