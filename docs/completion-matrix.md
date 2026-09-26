@@ -45,7 +45,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Webhook catalog and dead-letter replay controls | Implemented; provider E2E pending | `/api/ops`, Settings → Operations |
 | Operational health counts for dead letters, failed webhooks, and degraded integrations | Live and deployed | `/api/health`, required schema includes outbound send records |
 | Dell local backup schedule, clean-database restore rehearsal, and off-machine copy | Live | Root cron at 02:15, verified custom-format dump, restore into `perpendicular_restore_check` with 13 platform tables, and Mac launchd pull of `/opt/blueblood/backups/perpendicular` via the existing least-privilege sudo rule |
-| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:8a4622df06c571eb7e91ecaeeaf4d742cfd6c096e75177e5360d0825ac2c1e32`, build `3a85b69`, eight checks, 2026-09-27 |
+| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:a20df0e849880ebd2e47e2e8a8a8755c96ec9589c5a1f5a4df1b1bcd50a50c6c`, build `c349d78`, eight checks, 2026-09-27 |
 | Dell heartbeat trigger | Live and verified on the host | Root-owned `/usr/local/sbin/perpendicular-heartbeat`, `flock` lock, API-origin request, and successful authenticated tick on 2026-09-26 |
 | CI verification before image publication | Live | `.github/workflows/perpendicular-image.yml` runs check and production audit before publish |
 
@@ -87,7 +87,7 @@ None of these are replaced with sample data or a green UI state.
 
 Read-only checks on 2026-09-27 found:
 
-- The live API is healthy on promoted immutable image `3a85b69` (`sha256:8a4622df06c571eb7e91ecaeeaf4d742cfd6c096e75177e5360d0825ac2c1e32`); the production smoke suite passed all eight checks, and the heartbeat now owns due website/blog publication plus native campaign completion through idempotent jobs.
+- The live API is healthy on promoted immutable image `c349d78` (`sha256:a20df0e849880ebd2e47e2e8a8a8755c96ec9589c5a1f5a4df1b1bcd50a50c6c`); the production smoke suite passed all eight checks, and sequence enrollment is now activation-gated in both the UI and server contract.
 - The authenticated browser session reaches the live workbench, completed a real mission through Dell → Ollama → Postgres, answered a real employee chat, approved the mission, generated grounded content, and created/enriched a Smart List row.
 - The verified UI is live on the Git-connected production deployment (`perpendicular.bluebloodstudio.com`, with `perpendicular-nine.vercel.app` retained as an alias); the production target is `READY` with the expected Company / Chat / Scheduled / People / Lead Data / Pipeline / Campaigns / Keywords / Inbound / Apps navigation.
 - The onboarding proof now attaches the scored first run to the first real mission, so opening the workbench produces a reviewable mission instead of an empty queue.
