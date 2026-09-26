@@ -5,6 +5,7 @@ import { authenticateRequest, IdentityError } from "@/lib/identity";
 import { corsHeadersFor, corsJson } from "@/lib/cors";
 import { listIntegrationSummaries } from "@/lib/integration-store";
 import { hasPermission } from "@/lib/route-auth";
+import { workspaceStateForClient } from "@/lib/workspace-view";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -15,19 +16,20 @@ export async function GET(request: Request) {
     if (!hasPermission(identity, "workspace:read")) return corsJson({ error: "You do not have permission to export this workspace." }, { status: 403 }, request);
     const url = new URL(request.url);
     const workspace = await getWorkspace(identity.workspaceId);
+    const safeWorkspace = workspaceStateForClient(workspace);
     const integrations = await listIntegrationSummaries(identity.workspaceId).catch(() => workspace.integrations || []);
     const usage = await getUsageSummary(identity.workspaceId).catch(() => null);
     const exportPayload = {
       exportedAt: new Date().toISOString(),
       workspaceId: identity.workspaceId,
       viewer: { userId: identity.userId, email: identity.email },
-      workspace,
+      workspace: safeWorkspace,
       integrations,
       usage,
     };
     const filenameWorkspaceId = identity.workspaceId.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 80) || "workspace";
     if (url.searchParams.get("format") === "csv") {
-      const rows = workspace.lists.flatMap((list) => list.rows.map((row) => ({ list: list.name, ...row })));
+      const rows = safeWorkspace.lists.flatMap((list) => list.rows.map((row) => ({ list: list.name, ...row })));
       const columns = ["list", "id", "name", "email", "company", "role", "location", "score", "status", "emailStatus", "intent", "companyInsight", "enrollmentStatus", "lastAction"] as const;
       const escape = (value: unknown) => {
         const text = String(value ?? "");

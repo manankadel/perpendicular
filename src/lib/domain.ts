@@ -72,6 +72,22 @@ export type Conversation = {
   messages: ConversationMessage[];
 };
 
+export type WidgetConversation = {
+  id: string;
+  sessionId: string;
+  employeeId: string;
+  messages: ConversationMessage[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WidgetSettings = {
+  enabled: boolean;
+  publicKeyHash: string | null;
+  employeeId: string | null;
+  greeting: string;
+};
+
 export type Run = {
   id: string;
   employeeId: string;
@@ -260,6 +276,8 @@ export type WorkspaceState = {
   employees: Employee[];
   documents: DocumentRecord[];
   conversations: Conversation[];
+  widget: WidgetSettings;
+  widgetConversations: WidgetConversation[];
   runs: Run[];
   missions: Mission[];
   content: ContentItem[];
@@ -287,6 +305,15 @@ export type WorkspaceState = {
 const now = () => new Date().toISOString();
 
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
+
+export function createWidgetSettings(): WidgetSettings {
+  return {
+    enabled: false,
+    publicKeyHash: null,
+    employeeId: null,
+    greeting: "Tell us what you are trying to accomplish. Our operator will help with the next step.",
+  };
+}
 
 function defaultPlaybooks(): Playbook[] {
   return [
@@ -435,6 +462,14 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
     employees,
     documents,
     conversations: Array.isArray(state.conversations) ? state.conversations : [],
+    widget: {
+      ...createWidgetSettings(),
+      ...(state.widget || {}),
+      publicKeyHash: typeof state.widget?.publicKeyHash === "string" ? state.widget.publicKeyHash : null,
+      employeeId: typeof state.widget?.employeeId === "string" ? state.widget.employeeId : null,
+      greeting: typeof state.widget?.greeting === "string" && state.widget.greeting.trim() ? state.widget.greeting : createWidgetSettings().greeting,
+    },
+    widgetConversations: Array.isArray(state.widgetConversations) ? state.widgetConversations : [],
     runs: Array.isArray(state.runs) ? state.runs : [],
     missions,
     content,
@@ -479,6 +514,8 @@ function createEmptyState(companyId: string): WorkspaceState {
     employees: [],
     documents: [],
     conversations: [],
+    widget: createWidgetSettings(),
+    widgetConversations: [],
     runs: [],
     missions: [],
     content: [],

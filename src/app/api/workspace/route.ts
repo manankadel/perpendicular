@@ -27,6 +27,8 @@ import { ingestUploadedDocument } from "@/lib/document-ingest";
 import { researchPersonCompany, researchWebsite } from "@/lib/public-research";
 import { corsHeadersFor } from "@/lib/cors";
 import { recordUsage } from "@/lib/usage";
+import { createWidgetKey, widgetKeyHash } from "@/lib/widget";
+import { workspaceStateForClient } from "@/lib/workspace-view";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -166,7 +168,7 @@ async function getWorkspaceRoute(request: Request) {
     let integrations = state.integrations || [];
     try { integrations = await listIntegrationSummaries(identity.context.workspaceId); } catch { if (process.env.NODE_ENV === "production") throw new Error("Integration storage is not ready."); }
     return json({
-      ...state,
+      ...workspaceStateForClient(state),
       integrations,
       viewer: { email: identity.context.email, firstName: identity.context.firstName, lastName: identity.context.lastName },
     }, { headers: rateLimitHeaders(identity.context) });
@@ -245,8 +247,8 @@ async function postWorkspace(request: Request): Promise<Response> {
         addActivity(state, { type: "system", title: `${companyName} was discovered`, detail: `${artifacts.document.name} indexed · ${artifacts.employees.length} operators and ${artifacts.missions.length} missions are ready`, });
         return state;
       });
-      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.bootstrap", metadata: { goal, source: discovery.url ? "public_url" : "operator_brief" } }); } catch { if (process.env.NODE_ENV === "production") return json({ state: next, persisted: true, error: "The workspace was created, but its audit record could not be stored." }, { status: 503 }); }
-      return json({ state: next, discovery: { title: next.workspace.onboarding.sourceTitle, description: next.workspace.onboarding.sourceDescription, url: next.workspace.onboarding.companyUrl } });
+      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.bootstrap", metadata: { goal, source: discovery.url ? "public_url" : "operator_brief" } }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The workspace was created, but its audit record could not be stored." }, { status: 503 }); }
+      return json({ state: workspaceStateForClient(next), discovery: { title: next.workspace.onboarding.sourceTitle, description: next.workspace.onboarding.sourceDescription, url: next.workspace.onboarding.companyUrl } });
     }
 
     if (action === "enroll-row") {
@@ -329,7 +331,7 @@ async function postWorkspace(request: Request): Promise<Response> {
       const onboarding = current.workspace.onboarding;
       const employee = onboarding.employeeId ? findEmployee(current, onboarding.employeeId) : undefined;
       if (!employee || !onboarding.goal) return json({ error: "Complete workspace discovery before running the first brief." }, { status: 400 });
-      if (onboarding.runId) return json(current);
+      if (onboarding.runId) return json(workspaceStateForClient(current));
       if (current.workspace.aiCredits.remaining < 2) return json({ error: "Not enough AI Credits for the first brief." }, { status: 402 });
       const task = employee.goldenTests[0]?.input || "Review the workspace and propose the three highest-leverage next actions for this week.";
       const startedAt = Date.now();
@@ -344,9 +346,9 @@ async function postWorkspace(request: Request): Promise<Response> {
         addActivity(state, { type: "run", title: `${liveEmployee.name} delivered the first brief`, detail: `Score ${run.score} · grounded in ${state.documents[0]?.name || "workspace context"}`, });
         return state;
       });
-      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.onboarding_run", resourceType: "employee", resourceId: employee.id }); } catch { if (process.env.NODE_ENV === "production") return json({ state: next, persisted: true, error: "The brief was saved, but its audit record could not be stored." }, { status: 503 }); }
-      try { await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "onboarding_brief", unit: "ai", units: 2 }); } catch { if (process.env.NODE_ENV === "production") return json({ state: next, persisted: true, error: "The brief was saved, but its usage record could not be stored." }, { status: 503 }); }
-      return json(next);
+      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.onboarding_run", resourceType: "employee", resourceId: employee.id }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The brief was saved, but its audit record could not be stored." }, { status: 503 }); }
+      try { await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "onboarding_brief", unit: "ai", units: 2 }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The brief was saved, but its usage record could not be stored." }, { status: 503 }); }
+      return json(workspaceStateForClient(next));
     }
 
     if (action === "enable-onboarding-schedule") {
@@ -362,8 +364,8 @@ async function postWorkspace(request: Request): Promise<Response> {
         addActivity(state, { type: "employee", title: `${employee.name} is now on a daily rhythm`, detail: "The Dell heartbeat will run the same grounded brief each day", });
         return state;
       });
-      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.onboarding_schedule" }); } catch { if (process.env.NODE_ENV === "production") return json({ state: next, persisted: true, error: "The schedule was saved, but its audit record could not be stored." }, { status: 503 }); }
-      return json(next);
+      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.onboarding_schedule" }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The schedule was saved, but its audit record could not be stored." }, { status: 503 }); }
+      return json(workspaceStateForClient(next));
     }
 
     if (action === "finish-onboarding") {
@@ -374,8 +376,8 @@ async function postWorkspace(request: Request): Promise<Response> {
         addActivity(state, { type: "system", title: "Workspace setup completed", detail: "The operator pod is ready for manual work." });
         return state;
       });
-      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.onboarding_complete" }); } catch { if (process.env.NODE_ENV === "production") return json({ state: next, persisted: true, error: "The workspace was opened, but its audit record could not be stored." }, { status: 503 }); }
-      return json(next);
+      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.onboarding_complete" }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The workspace was opened, but its audit record could not be stored." }, { status: 503 }); }
+      return json(workspaceStateForClient(next));
     }
 
     if (action === "chat") {
@@ -403,9 +405,26 @@ async function postWorkspace(request: Request): Promise<Response> {
         addActivity(state, { type: "run", title: `${employee.name} answered in chat`, detail: `${result.provider} · ${result.citations.length} source${result.citations.length === 1 ? "" : "s"}`, });
         return state;
       });
-      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.chat", resourceType: "employee", resourceId: employeeId }); } catch { if (process.env.NODE_ENV === "production") return json({ state: next, persisted: true, error: "The chat reply was saved, but its audit record could not be stored." }, { status: 503 }); }
-      try { await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "employee_chat", unit: "ai", units: 1, provider: result.provider }); } catch { if (process.env.NODE_ENV === "production") return json({ state: next, persisted: true, error: "The chat reply was saved, but its usage record could not be stored." }, { status: 503 }); }
-      return json({ state: next, provider: result.provider }, { headers: rateLimitHeaders(identity.context) });
+      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.chat", resourceType: "employee", resourceId: employeeId }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The chat reply was saved, but its audit record could not be stored." }, { status: 503 }); }
+      try { await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "employee_chat", unit: "ai", units: 1, provider: result.provider }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The chat reply was saved, but its usage record could not be stored." }, { status: 503 }); }
+      return json({ state: workspaceStateForClient(next), provider: result.provider }, { headers: rateLimitHeaders(identity.context) });
+    }
+
+    if (action === "configure-widget") {
+      const enabled = body.enabled !== false;
+      const employeeId = String(body.employeeId || "").trim() || null;
+      const greeting = String(body.greeting || "").trim() || "Tell us what you are trying to accomplish. Our operator will help with the next step.";
+      const current = await getWorkspace(companyId);
+      if (enabled && employeeId && !findEmployee(current, employeeId)) return json({ error: "Widget operator not found." }, { status: 400 });
+      if (enabled && !employeeId && !current.employees.some((employee) => employee.status === "live")) return json({ error: "Create a live employee before enabling the widget." }, { status: 400 });
+      const key = enabled ? createWidgetKey() : null;
+      const next = await updateWorkspace(companyId, (state) => {
+        state.widget = { enabled, employeeId, greeting: greeting.slice(0, 500), publicKeyHash: key ? widgetKeyHash(key) : null };
+        addActivity(state, { type: "system", title: `Website widget ${enabled ? "enabled" : "disabled"}`, detail: enabled ? "Public conversations are routed to the selected operator." : "Public conversations are no longer accepted." });
+        return state;
+      });
+      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "widget.configured", metadata: { enabled, employeeId } }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The widget was saved, but its audit record could not be stored." }, { status: 503 }); }
+      return json({ state: workspaceStateForClient(next), widget: { key, enabled, employeeId: next.widget.employeeId, greeting: next.widget.greeting } });
     }
 
     if (action === "run-mission" || action === "generate-content") {
@@ -448,9 +467,9 @@ async function postWorkspace(request: Request): Promise<Response> {
         }
         return state;
       });
-      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: `workspace.${action}`, resourceType: mission ? "mission" : "content", resourceId: mission?.id || content?.id }); } catch { if (process.env.NODE_ENV === "production") return json({ state: next, persisted: true, error: "The work was saved, but its audit record could not be stored." }, { status: 503 }); }
-      try { await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: mission ? "mission_run" : "content_generation", unit: "ai", units: 2, provider: result.provider }); } catch { if (process.env.NODE_ENV === "production") return json({ state: next, persisted: true, error: "The work was saved, but its usage record could not be stored." }, { status: 503 }); }
-      return json({ state: next, provider: result.provider }, { headers: rateLimitHeaders(identity.context) });
+      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: `workspace.${action}`, resourceType: mission ? "mission" : "content", resourceId: mission?.id || content?.id }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The work was saved, but its audit record could not be stored." }, { status: 503 }); }
+      try { await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: mission ? "mission_run" : "content_generation", unit: "ai", units: 2, provider: result.provider }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The work was saved, but its usage record could not be stored." }, { status: 503 }); }
+      return json({ state: workspaceStateForClient(next), provider: result.provider }, { headers: rateLimitHeaders(identity.context) });
     }
 
     const updated = await updateWorkspace(companyId, async (state) => {
@@ -821,23 +840,23 @@ async function postWorkspace(request: Request): Promise<Response> {
     try {
       await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: `workspace.${action}`, metadata: { action } });
     } catch {
-      if (process.env.NODE_ENV === "production") return json({ state: updated, persisted: true, error: "The action was saved, but its audit record could not be stored." }, { status: 503 });
+      if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(updated), persisted: true, error: "The action was saved, but its audit record could not be stored." }, { status: 503 });
     }
     if (action === "run-employee" || action === "evaluate-employee") {
       try {
         await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: action === "run-employee" ? "employee_run" : "employee_evaluation", unit: "ai", units: 2 });
       } catch {
-        if (process.env.NODE_ENV === "production") return json({ state: updated, persisted: true, error: "The action was saved, but its usage record could not be stored." }, { status: 503 });
+        if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(updated), persisted: true, error: "The action was saved, but its usage record could not be stored." }, { status: 503 });
       }
     }
     if (action === "enrich-row") {
       try {
         await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "public_research", unit: "data", units: 2 });
       } catch {
-        if (process.env.NODE_ENV === "production") return json({ state: updated, persisted: true, error: "The research was saved, but its usage record could not be stored." }, { status: 503 });
+        if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(updated), persisted: true, error: "The research was saved, but its usage record could not be stored." }, { status: 503 });
       }
     }
-    return json(updated, { headers: rateLimitHeaders(identity.context) });
+    return json(workspaceStateForClient(updated), { headers: rateLimitHeaders(identity.context) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Action failed.";
     return json({ error: message }, { status: 400 });

@@ -5,6 +5,7 @@ import { generateEmployeeReply } from "@/lib/llm";
 import { hasPermission, identityOrResponse, rateLimitHeaders, rejectCrossOrigin } from "@/lib/route-auth";
 import { getWorkspace, updateWorkspace } from "@/lib/server-store";
 import { recordUsage } from "@/lib/usage";
+import { workspaceStateForClient } from "@/lib/workspace-view";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -65,7 +66,7 @@ export async function POST(request: Request) {
     const args = body.params?.arguments || {};
     if (name === "workspace_get") {
       if (!hasPermission(identity.context, "workspace:read")) throw new Error("Permission denied.");
-      return respond({ jsonrpc: "2.0", id, result: result(await getWorkspace(identity.context.workspaceId)) });
+      return respond({ jsonrpc: "2.0", id, result: result(workspaceStateForClient(await getWorkspace(identity.context.workspaceId))) });
     }
     if (name === "integrations_list") {
       if (!hasPermission(identity.context, "workspace:read")) throw new Error("Permission denied.");

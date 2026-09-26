@@ -58,6 +58,7 @@ await check("OpenAPI documentation", async () => {
   for (const path of ["/api/inbox", "/api/cron/heartbeat", "/api/keys/{id}"]) {
     if (!body.paths?.[path]) throw new Error(`missing ${path}`);
   }
+  if (!body.paths?.["/api/widget/{workspaceId}/chat"]) throw new Error("missing public widget chat");
 });
 
 await check("truthful pricing endpoint", async () => {
@@ -74,6 +75,11 @@ for (const [name, origin] of [["canonical UI", canonicalOrigin], ["Vercel UI", v
     if (response.status !== 200 || !body.includes("Perpendicular")) throw new Error(`status=${response.status}`);
   });
 }
+
+await check("public widget entry route", async () => {
+  const response = await request(`${canonicalOrigin}/widget/smoke-test?key=invalid`);
+  if (response.status !== 200) throw new Error(`status=${response.status}`);
+});
 
 if (failures.length) {
   console.error(`\n${failures.length} production smoke check(s) failed.`);
