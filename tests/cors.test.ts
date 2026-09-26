@@ -8,6 +8,18 @@ test("allows the canonical and connected Vercel origins without allowing arbitra
   assert.equal(isAllowedWebOrigin("https://attacker.example"), false);
 });
 
+test("allows loopback origins only outside production for local mutation testing", () => {
+  const environment = process.env as Record<string, string | undefined>;
+  const previous = environment.NODE_ENV;
+  delete environment.NODE_ENV;
+  assert.equal(isAllowedWebOrigin("http://127.0.0.1:3100"), true);
+  assert.equal(isAllowedWebOrigin("http://localhost:3000"), true);
+  environment.NODE_ENV = "production";
+  assert.equal(isAllowedWebOrigin("http://127.0.0.1:3100"), false);
+  if (previous === undefined) delete environment.NODE_ENV;
+  else environment.NODE_ENV = previous;
+});
+
 test("echoes an allowed request origin for credentialed CORS", () => {
   const request = new Request("https://perpendicular-api.bluebloodstudio.com/api/workspace", {
     headers: { origin: "https://perpendicular-nine.vercel.app" },

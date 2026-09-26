@@ -14,7 +14,14 @@ function configuredWebOrigins() {
 }
 
 export function isAllowedWebOrigin(origin: string | null) {
-  return !origin || configuredWebOrigins().includes(origin);
+  if (!origin || configuredWebOrigins().includes(origin)) return true;
+  if (process.env.NODE_ENV === "production") return false;
+  try {
+    const parsed = new URL(origin);
+    return parsed.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname);
+  } catch {
+    return false;
+  }
 }
 
 export function corsHeadersFor(request?: Request) {
