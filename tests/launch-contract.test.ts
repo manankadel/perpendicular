@@ -85,6 +85,13 @@ test("Google sign-in stays product-owned and uses a safe return path", () => {
   assert.match(login, /api\/auth\/google\/start/);
 });
 
+test("the Vercel alias redirects to the canonical cookie-compatible product origin", () => {
+  const proxy = readFileSync(join(root, "src/proxy.ts"), "utf8");
+  assert.match(proxy, /endsWith\("\.vercel\.app"\)/);
+  assert.match(proxy, /NEXT_PUBLIC_CANONICAL_URL/);
+  assert.match(proxy, /NextResponse\.redirect/);
+});
+
 test("Gmail sync has a workspace-scoped inbox read surface", () => {
   const route = readFileSync(join(root, "src/app/api/inbox/route.ts"), "utf8");
   const sync = readFileSync(join(root, "src/app/api/integrations/gmail/sync/route.ts"), "utf8");
@@ -169,6 +176,16 @@ test("MCP mutations expose persisted state when audit or usage logging fails", (
   assert.match(mcp, /name: "content_generate"/);
   assert.match(mcp, /name: "content_approve"/);
   assert.match(mcp, /name === "employee_chat"\)[\s\S]*hasPermission\(identity\.context, "workspace:write"\)/);
+});
+
+test("onboarding keeps the proof step visible until the operator chooses a repeat mode", () => {
+  const domain = readFileSync(join(root, "src/lib/domain.ts"), "utf8");
+  const workspace = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
+  const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
+  assert.match(domain, /status: "not_started" \| "ready" \| "proved" \| "completed"/);
+  assert.match(workspace, /state\.workspace\.onboarding\.status = "proved"/);
+  assert.match(workspace, /action === "finish-onboarding"/);
+  assert.match(console, /Open workbench/);
 });
 
 test("external side effects do not masquerade as failures when audit storage is down", () => {

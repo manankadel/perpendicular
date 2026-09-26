@@ -241,9 +241,8 @@ async function postWorkspace(request: Request): Promise<Response> {
         if (!liveEmployee) return state;
         const run = makeRun(state, liveEmployee, task, "manual", result.content);
         run.trace[2].detail = `${liveEmployee.model} · ${result.provider}`;
-        state.workspace.onboarding.status = "completed";
+        state.workspace.onboarding.status = "proved";
         state.workspace.onboarding.runId = run.id;
-        state.workspace.onboarding.completedAt = run.createdAt;
         addActivity(state, { type: "run", title: `${liveEmployee.name} delivered the first brief`, detail: `Score ${run.score} · grounded in ${state.documents[0]?.name || "workspace context"}`, });
         return state;
       });
@@ -260,10 +259,24 @@ async function postWorkspace(request: Request): Promise<Response> {
         const task = employee.goldenTests[0]?.input || "Review the workspace and write the highest-leverage next action for this week.";
         employee.schedule = { enabled: true, cadence: "daily", task, nextRunAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() };
         state.workspace.onboarding.scheduleEnabled = true;
+        state.workspace.onboarding.status = "completed";
+        state.workspace.onboarding.completedAt = timestamp();
         addActivity(state, { type: "employee", title: `${employee.name} is now on a daily rhythm`, detail: "The Dell heartbeat will run the same grounded brief each day", });
         return state;
       });
       try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.onboarding_schedule" }); } catch { if (process.env.NODE_ENV === "production") return json({ state: next, persisted: true, error: "The schedule was saved, but its audit record could not be stored." }, { status: 503 }); }
+      return json(next);
+    }
+
+    if (action === "finish-onboarding") {
+      const next = await updateWorkspace(companyId, (state) => {
+        if (!state.workspace.onboarding.runId) throw new Error("Run the first brief before opening the workbench.");
+        state.workspace.onboarding.status = "completed";
+        state.workspace.onboarding.completedAt = state.workspace.onboarding.completedAt || timestamp();
+        addActivity(state, { type: "system", title: "Workspace setup completed", detail: "The operator pod is ready for manual work." });
+        return state;
+      });
+      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.onboarding_complete" }); } catch { if (process.env.NODE_ENV === "production") return json({ state: next, persisted: true, error: "The workspace was opened, but its audit record could not be stored." }, { status: 503 }); }
       return json(next);
     }
 

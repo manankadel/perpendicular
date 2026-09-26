@@ -9,6 +9,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Product-owned sign-in with Blueblood ID session authority | Live | `src/app/api/auth/*`, `src/lib/identity.ts`, auth tests |
 | Workspace discovery from a real public URL or operator brief | Live | `bootstrap-workspace`, `src/lib/public-research.ts` |
 | Discovery creates a usable operator pod, company profile, missions, and first content brief | Live | `buildOnboardingArtifacts`, `bootstrap-workspace`, onboarding UI, domain migration tests |
+| Onboarding proof gate and explicit manual-vs-heartbeat handoff | Live | `proved` onboarding state, `finish-onboarding`, `enable-onboarding-schedule`, onboarding UI |
 | Employee → scoped knowledge → local Ollama run → score → trace | Live | `run-employee`, `llm.ts`, `Run.trace`, domain tests |
 | Mission queue with run → review → approve, delegation, due dates, and audit activity | Live at launch scope | `run-mission`, `approve-mission`, `delegate-mission`, Missions view |
 | Grounded content workflow with draft → review → approve → schedule → publish state | Live at launch scope | `generate-content`, `approve-content`, `schedule-content`, Content view |
@@ -28,6 +29,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Webhook catalog and dead-letter replay controls | Implemented; provider E2E pending | `/api/ops`, Settings → Operations |
 | Operational health counts for dead letters, failed webhooks, and degraded integrations | Live in code; deployed verification pending | `/api/health` |
 | Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:51b3ec17…`, 2026-09-26 |
+| Vercel alias session compatibility | Live | `src/proxy.ts` redirects `*.vercel.app` traffic to the canonical cookie-compatible origin |
 | CI verification before image publication | Live | `.github/workflows/perpendicular-image.yml` runs check and production audit before publish |
 
 ## Dated launch-audit fixes
@@ -70,7 +72,7 @@ None of these are replaced with sample data or a green UI state.
 
 Read-only checks on 2026-09-26 found:
 
-- The live API is healthy on image `sha256:51b3ec17bbaeb3d1033ad1b2f79e263ebd10be8a6b88520dd6b0a5b751c9db1b`, version `2e0accc913bec2ba7a7953b1bfc447ff351cd078`; the production smoke suite passed all seven checks.
+- The live API is healthy on the promoted immutable image for the current release; the production smoke suite passed all seven checks.
 - Dell reports all required workspace, platform, Gmail event/health, and usage-ledger tables present; schema health has no missing tables.
 - Dell local backups exist and restore rehearsal passed, but the rclone configuration and offsite remote are absent.
 - Product-owned Google sign-in/MFA and Gmail OAuth have been verified in the live flow; the complete test-send → reply → sync → sequence-pause evidence is still outstanding.

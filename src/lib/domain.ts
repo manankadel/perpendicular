@@ -222,7 +222,7 @@ export type Playbook = {
 };
 
 export type OnboardingState = {
-  status: "not_started" | "ready" | "completed";
+  status: "not_started" | "ready" | "proved" | "completed";
   goal: OnboardingGoal | null;
   companyUrl: string | null;
   sourceTitle: string | null;

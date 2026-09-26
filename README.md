@@ -55,7 +55,7 @@ The public API health probe is `https://perpendicular-api.bluebloodstudio.com/ap
 
 The Dell release includes a verified Postgres backup script at `deploy/dell/backup-postgres.sh`. It is intentionally separate from application deploys; deploys never run migrations or touch the backup schedule.
 
-New workspaces do not receive demo employees, leads, content, or metrics. Onboarding creates only what the operator requested and can prove: one discovered source, one scoped employee, and one real run. If the public URL cannot be fetched, the operator can provide a source brief; if Ollama is unavailable, the first run stops with a configuration error instead of rendering a placeholder.
+New workspaces do not receive demo employees, leads, content, or metrics. Onboarding creates only what the operator requested and can prove: one discovered source, a four-role scoped operator pod, a reviewable mission queue, and one real run. The operator can then choose a daily Dell heartbeat or open the workbench manually. If the public URL cannot be fetched, the operator can provide a source brief; if Ollama is unavailable, the first run stops with a configuration error instead of rendering a placeholder.
 
 ## Required provider setup
 
