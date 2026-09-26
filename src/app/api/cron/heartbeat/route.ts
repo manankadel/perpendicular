@@ -6,6 +6,7 @@ import { claimJob, completeJob, failJob } from "@/lib/job-store";
 import { renewGmailWatchIfNeeded } from "@/lib/gmail";
 import { recordUsage } from "@/lib/usage";
 import { nextAllowedScheduleAt, scheduleExecutionTask, scheduleWindowAllows } from "@/lib/scheduling";
+import { publishContentInState } from "@/lib/content-runtime";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -152,6 +153,31 @@ export async function POST(request: Request) {
         await completeJob(claim);
         if (ran) await recordUsage({ workspaceId: companyId, actorId: "heartbeat", feature: "scheduled_run", unit: "ai", units: 2 });
         if (ran) runCount += 1;
+      } catch (error) {
+        failedCount += 1;
+        await failJob(claim, error).catch(() => undefined);
+      }
+    }
+
+    const scheduledContent = snapshot.content.filter((item) => item.status === "scheduled" && item.scheduledAt && new Date(item.scheduledAt).getTime() <= Date.now() && (item.channel === "website" || item.channel === "blog"));
+    for (const contentSnapshot of scheduledContent) {
+      const scheduledFor = contentSnapshot.scheduledAt || "immediate";
+      const claim = await claimJob({
+        workspaceId: companyId,
+        kind: "scheduled-content",
+        idempotencyKey: `content-publish:${companyId}:${contentSnapshot.id}:${scheduledFor}`,
+        payload: { contentId: contentSnapshot.id, scheduledFor },
+      });
+      if (!claim) continue;
+      try {
+        await updateWorkspace(companyId, (workspace) => {
+          const item = workspace.content.find((candidate) => candidate.id === contentSnapshot.id);
+          if (!item || item.status !== "scheduled" || !item.scheduledAt || new Date(item.scheduledAt).getTime() > Date.now()) return workspace;
+          publishContentInState(workspace, item.id);
+          return workspace;
+        });
+        await completeJob(claim);
+        runCount += 1;
       } catch (error) {
         failedCount += 1;
         await failJob(claim, error).catch(() => undefined);
