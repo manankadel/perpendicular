@@ -8,7 +8,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | --- | --- | --- |
 | Product-owned sign-in with Blueblood ID session authority | Live | `src/app/api/auth/*`, `src/lib/identity.ts`, auth tests |
 | Workspace discovery from a real public URL or operator brief | Live | `bootstrap-workspace`, `src/lib/public-research.ts` |
-| Discovery creates a usable operator pod, company profile, missions, and first content brief | Live | `buildOnboardingArtifacts`, `bootstrap-workspace`, onboarding UI, domain migration tests |
+| Discovery creates a usable operator pod, company profile, missions, first content brief, and a five-step draft sequence | Live | `buildOnboardingArtifacts`, `bootstrap-workspace`, onboarding UI, domain migration tests |
 | Onboarding proof gate and explicit manual-vs-heartbeat handoff | Live | `proved` onboarding state, first mission linkage, `finish-onboarding`, `enable-onboarding-schedule`, onboarding UI |
 | Employee → scoped knowledge → local Ollama run → score → trace | Live | `run-employee`, `llm.ts`, `Run.trace`, domain tests |
 | Mission queue with run → review → approve, delegation, due dates, and audit activity | Live at launch scope | `run-mission`, `approve-mission`, `delegate-mission`, Missions view |
@@ -30,7 +30,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Webhook catalog and dead-letter replay controls | Implemented; provider E2E pending | `/api/ops`, Settings → Operations |
 | Operational health counts for dead letters, failed webhooks, and degraded integrations | Live and deployed | `/api/health`, required schema includes outbound send records |
 | Dell local backup schedule and clean-database restore rehearsal | Live locally; offsite copy pending | Root cron at 02:15, verified custom-format dump, restore into `perpendicular_restore_check` with 13 platform tables |
-| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:32329258…`, build `2a3e6ba`, eight checks, 2026-09-26 |
+| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:a2bbcb46…`, build `ca1e3ab`, eight checks, 2026-09-27 |
 | Dell heartbeat trigger | Live and verified on the host | Root-owned `/usr/local/sbin/perpendicular-heartbeat`, `flock` lock, API-origin request, and successful authenticated tick on 2026-09-26 |
 | CI verification before image publication | Live | `.github/workflows/perpendicular-image.yml` runs check and production audit before publish |
 
@@ -61,12 +61,12 @@ These are present in the comparison/audit documents but are not silently faked i
 
 ## Remaining launch evidence
 
-The code is launchable for the documented open-source launch scope. Public launch evidence still requires real external state:
+The code is launchable for the documented open-source launch scope. The canonical API is live, but the public UI release is still blocked by Vercel account state. Public launch evidence still requires real external state:
 
 1. Configure and retrieve an offsite backup through `PERPENDICULAR_BACKUP_REMOTE`.
 2. Run an authenticated Gmail OAuth → test-send → reply → sync → sequence-pause test with a mailbox the operator controls.
 3. Run a second-workspace isolation test against the deployed Blueblood ID memberships.
-4. Run the final authenticated browser walkthrough against the promoted UI and API.
+4. Resolve the Vercel deployment block, promote the verified UI commit, and run the final authenticated browser walkthrough against that UI and API.
 
 None of these are replaced with sample data or a green UI state.
 
@@ -74,11 +74,13 @@ None of these are replaced with sample data or a green UI state.
 
 Read-only checks on 2026-09-27 found:
 
-- The live API is healthy on promoted immutable image `2a3e6ba` (`sha256:323292589df40596ab90c6041f40326557f32732e69453eac59b83ae841d91c8`); the production smoke suite passed all eight checks, including the public widget entry route.
+- The live API is healthy on promoted immutable image `ca1e3ab` (`sha256:a2bbcb46aa3ebef39fcb0be625f94034fe51b9e71694317ee1bc05ee843173a2`); the production smoke suite passed all eight checks, including the public widget entry route.
+- The authenticated browser session reaches the live workbench and completed a real mission through Dell → Ollama → Postgres; the API now also identifies Perpendicular correctly in the same chat path instead of borrowing another product identity.
+- The verified UI commits `8f8b74b` and `ca1e3ab` are pushed to `main`, but Vercel blocks subsequent production deployments before alias promotion with no build error. A separate fallback project built once and was also blocked on its next production deployment; its GitHub connection is pending a Vercel Login Connection for the owning account.
 - The onboarding proof now attaches the scored first run to the first real mission, so opening the workbench produces a reviewable mission instead of an empty queue.
 - The Dell host heartbeat is installed as a root-owned helper with a non-overlap lock and calls `https://perpendicular-api.bluebloodstudio.com/api/cron/heartbeat`; an authenticated tick returned successfully.
 - Dell reports all required workspace, platform, Gmail event/health, usage-ledger, and outbound-message tables present; schema health has no missing tables.
 - The API-key rate-limit table is applied additively on Dell; the transactional workspace write path, outbound safety guardrails, CSV lead import, and public widget are live on the promoted image.
 - Dell local backups are scheduled at 02:15, a fresh dump was created, and restore rehearsal into `perpendicular_restore_check` succeeded with one workspace row and 13 platform tables; the rclone configuration and offsite remote are absent.
-- The canonical login UI and self-serve workspace form load in Chrome. The available browser session had no authenticated Perpendicular cookie, so the signed-in browser walkthrough and provider side-effect test remain unproven rather than being marked green.
+- The canonical login UI and self-serve workspace form load in Chrome. An authenticated browser session is now available and the signed-in workbench/mission path has been exercised; the final walkthrough must be repeated after the verified UI commit is actually promoted.
 - Product-owned Google sign-in/MFA and Gmail OAuth are implemented and configured; an authenticated browser walkthrough and the complete test-send → reply → sync → sequence-pause evidence are still outstanding.
