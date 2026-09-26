@@ -5,6 +5,7 @@ import { generateEmployeeReply } from "@/lib/llm";
 import { claimJob, completeJob, failJob } from "@/lib/job-store";
 import { renewGmailWatchIfNeeded } from "@/lib/gmail";
 import { recordUsage } from "@/lib/usage";
+import { nextAllowedScheduleAt, scheduleExecutionTask, scheduleWindowAllows } from "@/lib/scheduling";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -102,9 +103,14 @@ export async function POST(request: Request) {
           const schedule = workspace.schedules.find((candidate) => candidate.id === scheduleSnapshot.id);
           const employee = schedule?.employeeId ? workspace.employees.find((candidate) => candidate.id === schedule.employeeId) : workspace.employees.find((candidate) => candidate.status === "live");
           if (!schedule || !schedule.active || !employee) return workspace;
+          if (!scheduleWindowAllows(schedule, workspace.profile.timezone, new Date())) {
+            schedule.nextRunAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+            return workspace;
+          }
           if (workspace.workspace.aiCredits.remaining < 2) throw new Error("Not enough AI Credits for scheduled work.");
           const startedAt = Date.now();
-          const result = await generateEmployeeReply(employee, schedule.description, workspace.documents);
+          const task = scheduleExecutionTask(schedule);
+          const result = await generateEmployeeReply(employee, task, workspace.documents);
           const scoringStartedAt = Date.now();
           const score = scoreRun(schedule.description, result.content);
           const createdAt = timestamp();
@@ -112,7 +118,7 @@ export async function POST(request: Request) {
             id: createId("run"),
             employeeId: employee.id,
             trigger: "heartbeat",
-            task: schedule.description,
+            task,
             output: result.content,
             score,
             reason: "Scheduled work completed with local context and an independent score.",
@@ -131,10 +137,11 @@ export async function POST(request: Request) {
           employee.lastRunAt = createdAt;
           schedule.lastRunAt = createdAt;
           schedule.runCount += 1;
+          schedule.lastOutput = result.content;
+          schedule.runLog = [{ runId: workspace.runs[0].id, createdAt, output: result.content, score }, ...(schedule.runLog || [])].slice(0, 20);
           if (schedule.cadence === "once") schedule.active = false;
           else {
-            const minutes = schedule.cadence === "every 15m" ? 15 : schedule.cadence === "hourly" ? 60 : schedule.cadence === "daily" ? 1440 : 10080;
-            schedule.nextRunAt = new Date(Date.now() + minutes * 60 * 1000).toISOString();
+            schedule.nextRunAt = nextAllowedScheduleAt(schedule, workspace.profile.timezone, Date.now());
           }
           workspace.workspace.aiCredits.remaining = Math.max(0, workspace.workspace.aiCredits.remaining - 2);
           addActivity(workspace, { type: "run", title: `${schedule.name} woke up`, detail: `${employee.name} · score ${score} · ${schedule.cadence}` });

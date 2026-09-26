@@ -17,6 +17,8 @@ This is the implementation truth for the supplied product and audit documents. A
 | Inspectable playbook catalog that creates durable missions | Live at launch scope | `install-playbook`, `run-playbook`, Playbooks view |
 | Compatibility migration for existing one-operator workspaces | Live | `normalizeWorkspaceState`, `server-store.ts`, legacy migration test |
 | Prompt versions, golden tests, evaluate, activate, rollback | Live | Employee detail UI and workspace actions |
+| Employee runtime controls: local model, temperature, reasoning, tools, attached knowledge, memory, admin lock | Live | `update-employee-config`, employee memory actions, `generateEmployeeReply` |
+| Smart List batch actions with conditions, bounded execution, and credit accounting | Live at launch scope | `create-list-action`, `run-list-action`, `toggle-list-action` |
 | Heartbeat scheduling with Postgres-leased idempotency | Live | `src/lib/job-store.ts`, heartbeat route, job tests |
 | Smart Lists, public research, dedupe, credit decrement, sequence enrollment | Live at launch scope | Workspace actions and UI |
 | People and Lead Data records with explicit public qualification and source runs | Live at launch scope | `create-person`, `qualify-person`, `create-lead-source`, `run-lead-source`, People and Lead Data views |

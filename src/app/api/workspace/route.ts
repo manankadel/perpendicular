@@ -20,6 +20,7 @@ import {
   type Mission,
   type PersonRecord,
   type ScheduledWork,
+  type SmartListAction,
   type SiteRecord,
   type WorkspaceState,
 } from "@/lib/domain";
@@ -41,6 +42,7 @@ import { workspaceStateForClient } from "@/lib/workspace-view";
 import { normalizeDomain, normalizeEmail, outboundSafetyDecision, startOfLocalDay, validateOutboundSafetySettings } from "@/lib/outbound-safety";
 import { parseLeadCsv, type LeadCsvError } from "@/lib/lead-csv";
 import { scoreLead } from "@/lib/lead-scoring";
+import { nextAllowedScheduleAt, nextScheduleAt, scheduleExecutionTask } from "@/lib/scheduling";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -85,6 +87,12 @@ function findMission(state: WorkspaceState, missionId: string) {
 
 function findContent(state: WorkspaceState, contentId: string) {
   return state.content.find((item) => item.id === contentId);
+}
+
+function listActionMatches(action: SmartListAction, row: WorkspaceState["lists"][number]["rows"][number]) {
+  if (action.condition === "new") return row.status === "new";
+  if (action.condition === "score_at_least") return row.score >= (action.scoreThreshold || 0);
+  return true;
 }
 
 function makeRun(state: WorkspaceState, employee: Employee, task: string, trigger: "manual" | "heartbeat" | "evaluation", result: LlmResult, startedAt: number) {
@@ -170,11 +178,6 @@ function onboardingGoal(value: unknown): OnboardingGoal {
   return (["revenue", "delivery", "content", "support"] as const).includes(value as OnboardingGoal) ? value as OnboardingGoal : "revenue";
 }
 
-function nextScheduleAt(cadence: ScheduledWork["cadence"], from = Date.now()) {
-  const delay = cadence === "every 15m" ? 15 : cadence === "hourly" ? 60 : cadence === "daily" ? 1440 : cadence === "weekly" ? 10080 : 0;
-  return new Date(from + delay * 60 * 1000).toISOString();
-}
-
 async function getWorkspaceRoute(request: Request) {
   const identity = await getIdentity(request);
   if ("response" in identity) return identity.response;
@@ -219,6 +222,7 @@ async function postWorkspace(request: Request): Promise<Response> {
   }
 
   let importSummary: { imported: number; skipped: number; errors: LeadCsvError[] } | undefined;
+  let listActionUsage: { unit: "ai" | "data"; units: number; feature: string } | null = null;
   try {
     if (action === "bootstrap-workspace") {
       const goal = onboardingGoal(body.goal);
@@ -635,6 +639,9 @@ async function postWorkspace(request: Request): Promise<Response> {
             model: process.env.OLLAMA_MODEL ? `Ollama · ${process.env.OLLAMA_MODEL}` : "Ollama · not configured",
             status: "live",
             memoryScope: "company",
+            tools: [],
+            memory: [],
+            knowledgeDocumentIds: [],
             score: 0,
             scoreTrend: [0],
             lastRunAt: null,
@@ -676,7 +683,7 @@ async function postWorkspace(request: Request): Promise<Response> {
           const name = String(body.name || "").trim();
           if (!name) throw new Error("List name is required.");
           if (state.lists.some((list) => list.name.toLowerCase() === name.toLowerCase())) throw new Error("A list with this name already exists.");
-          state.lists.unshift({ id: createId("list"), name, description: String(body.description || "").trim() || "Imported prospects ready for qualification.", updatedAt: timestamp(), rows: [] });
+          state.lists.unshift({ id: createId("list"), name, description: String(body.description || "").trim() || "Imported prospects ready for qualification.", updatedAt: timestamp(), rows: [], actions: [] });
           addActivity(state, { type: "lead", title: `${name} was created`, detail: "Ready for lead imports and public research", });
           return state;
         }
@@ -726,6 +733,94 @@ async function postWorkspace(request: Request): Promise<Response> {
           list.updatedAt = timestamp();
           importSummary = { imported, skipped: errors.length, errors: errors.slice(0, 50) };
           if (imported) addActivity(state, { type: "lead", title: `${imported} lead${imported === 1 ? "" : "s"} imported into ${list.name}`, detail: `${errors.length} row${errors.length === 1 ? "" : "s"} skipped with validation or suppression errors` });
+          return state;
+        }
+        case "create-list-action": {
+          const list = state.lists.find((item) => item.id === String(body.listId || ""));
+          const name = String(body.name || "").trim();
+          if (!list || !name) throw new Error("List and action name are required.");
+          const type = (["enrich", "run_employee", "suppress", "enroll"] as const).includes(body.type as never) ? body.type as SmartListAction["type"] : "enrich";
+          const condition = (["all", "new", "score_at_least"] as const).includes(body.condition as never) ? body.condition as SmartListAction["condition"] : "new";
+          const scoreThreshold = Number(body.scoreThreshold || 0);
+          const employeeId = String(body.employeeId || "").trim() || null;
+          const sequenceId = String(body.sequenceId || "").trim() || null;
+          if (type === "run_employee" && (!employeeId || !findEmployee(state, employeeId))) throw new Error("Choose a valid employee for this action.");
+          if (type === "enroll" && (!sequenceId || !state.sequences.some((sequence) => sequence.id === sequenceId))) throw new Error("Choose a valid sequence for this action.");
+          if (condition === "score_at_least" && (!Number.isFinite(scoreThreshold) || scoreThreshold < 0 || scoreThreshold > 100)) throw new Error("Score threshold must be between 0 and 100.");
+          const action: SmartListAction = { id: createId("list-action"), name, type, condition, scoreThreshold: condition === "score_at_least" ? scoreThreshold : undefined, employeeId, sequenceId, active: true, lastRunAt: null, runCount: 0, lastSummary: null };
+          list.actions = [action, ...(list.actions || [])];
+          list.updatedAt = timestamp();
+          addActivity(state, { type: "lead", title: `${name} was added to ${list.name}`, detail: `${type} action · condition ${condition}` });
+          return state;
+        }
+        case "toggle-list-action": {
+          const list = state.lists.find((item) => item.id === String(body.listId || ""));
+          const action = list?.actions?.find((item) => item.id === String(body.actionId || ""));
+          if (!list || !action) throw new Error("List action not found.");
+          action.active = body.active !== false;
+          addActivity(state, { type: "lead", title: `${action.name} ${action.active ? "enabled" : "paused"}`, detail: `Batch action on ${list.name}` });
+          return state;
+        }
+        case "run-list-action": {
+          const list = state.lists.find((item) => item.id === String(body.listId || ""));
+          const action = list?.actions?.find((item) => item.id === String(body.actionId || ""));
+          if (!list || !action) throw new Error("List action not found.");
+          if (!action.active) throw new Error("This list action is paused.");
+          const rows = list.rows.filter((row) => listActionMatches(action, row)).slice(0, 50);
+          if (!rows.length) {
+            action.lastRunAt = timestamp();
+            action.lastSummary = "No rows matched the action condition.";
+            return state;
+          }
+          const cost = rows.length * 2;
+          if (action.type === "enrich" && state.workspace.dataCredits.remaining < cost) throw new Error(`This action needs ${cost} Data Credits, but only ${state.workspace.dataCredits.remaining} remain.`);
+          if (action.type === "run_employee" && state.workspace.aiCredits.remaining < cost) throw new Error(`This action needs ${cost} AI Credits, but only ${state.workspace.aiCredits.remaining} remain.`);
+          let processed = 0;
+          for (const row of rows) {
+            if (action.type === "enrich") {
+              const research = await researchPersonCompany(row.email, row.company);
+              state.workspace.dataCredits.remaining -= 2;
+              const score = scoreLead({ email: row.email, role: row.role, company: row.company, researchText: research.text, idealCustomer: state.profile.idealCustomer });
+              row.status = "enriched";
+              row.emailStatus = "unknown";
+              row.score = score.score;
+              row.scoreReasons = score.reasons;
+              row.intent = score.intent;
+              row.companyInsight = research.insight;
+              row.lastAction = `Batch research · ${research.url}`;
+            } else if (action.type === "run_employee") {
+              const employee = action.employeeId ? findEmployee(state, action.employeeId) : undefined;
+              if (!employee) throw new Error("The action employee no longer exists.");
+              const task = `Review this Smart List lead and give one grounded next action.\nName: ${row.name}\nCompany: ${row.company}\nRole: ${row.role}\nCompany evidence: ${row.companyInsight}`;
+              const result = await generateEmployeeReply(employee, task, state.documents);
+              const run = makeRun(state, employee, task, "manual", result, Date.now());
+              row.lastAction = `${employee.name} reviewed this row · score ${run.score}`;
+            } else if (action.type === "suppress") {
+              const email = row.email.toLowerCase();
+              if (!state.suppressedEmails.includes(email)) state.suppressedEmails.push(email);
+              row.lastAction = "Batch suppressed for this workspace";
+            } else if (action.type === "enroll") {
+              const sequence = action.sequenceId ? state.sequences.find((candidate) => candidate.id === action.sequenceId) : undefined;
+              if (!sequence) throw new Error("The action sequence no longer exists.");
+              if (row.status !== "enriched" || state.suppressedEmails.includes(row.email.toLowerCase()) || row.enrollmentStatus === "enrolled") continue;
+              row.enrollmentStatus = "enrolled";
+              row.sequenceId = sequence.id;
+              row.sequenceStepIndex = 0;
+              row.sequenceStatus = "active";
+              row.lastSentAt = null;
+              row.lastProviderMessageId = null;
+              row.lastAction = `Batch enrolled in ${sequence.name}`;
+              sequence.enrolled += 1;
+            }
+            processed += 1;
+          }
+          action.lastRunAt = timestamp();
+          action.runCount += 1;
+          action.lastSummary = `${processed} row${processed === 1 ? "" : "s"} processed${processed < rows.length ? ` · ${rows.length - processed} skipped` : ""}.`;
+          if (action.type === "enrich") listActionUsage = { unit: "data", units: processed * 2, feature: "smart_list_batch_research" };
+          if (action.type === "run_employee") listActionUsage = { unit: "ai", units: processed * 2, feature: "smart_list_batch_employee" };
+          list.updatedAt = timestamp();
+          addActivity(state, { type: "lead", title: `${action.name} completed`, detail: `${list.name} · ${action.lastSummary}` });
           return state;
         }
         case "create-sequence": {
@@ -795,6 +890,60 @@ async function postWorkspace(request: Request): Promise<Response> {
           employee.promptVersions = employee.promptVersions.map((candidate) => ({ ...candidate, active: candidate.id === versionId }));
           employee.systemPrompt = version.prompt;
           addActivity(state, { type: "employee", title: `${employee.name} switched to prompt v${version.version}`, detail: "The previous live prompt remains available for rollback.", });
+          return state;
+        }
+        case "update-employee-config": {
+          const employee = findEmployee(state, String(body.employeeId || ""));
+          if (!employee) throw new Error("Employee not found.");
+          if (employee.locked) throw new Error("This employee is locked. Unlock it in Settings before changing its configuration.");
+          const model = String(body.model || employee.model).trim().split(" · ")[0];
+          if (!model || model.length > 80 || /[\u0000-\u001f\u007f\s]/.test(model)) throw new Error("Choose a valid local model name.");
+          const temperature = Number(body.temperature ?? employee.temperature ?? 0.35);
+          if (!Number.isFinite(temperature) || temperature < 0 || temperature > 1) throw new Error("Temperature must be between 0 and 1.");
+          const reasoning = (["focused", "balanced", "deep"] as const).includes(body.reasoning as never)
+            ? body.reasoning as "focused" | "balanced" | "deep"
+            : employee.reasoning || "balanced";
+          const tools = Array.isArray(body.tools)
+            ? body.tools.filter((tool): tool is string => typeof tool === "string" && tool.trim().length > 0).map((tool) => tool.trim()).slice(0, 30)
+            : employee.tools || [];
+          const requestedDocumentIds = Array.isArray(body.knowledgeDocumentIds)
+            ? body.knowledgeDocumentIds.filter((documentId): documentId is string => typeof documentId === "string")
+            : employee.knowledgeDocumentIds || [];
+          const knowledgeDocumentIds = requestedDocumentIds.filter((documentId) => state.documents.some((document) => document.id === documentId));
+          employee.model = model;
+          employee.temperature = temperature;
+          employee.reasoning = reasoning;
+          employee.memoryScope = body.memoryScope === "employee" ? "employee" : body.memoryScope === "company" ? "company" : employee.memoryScope;
+          employee.tools = tools;
+          employee.knowledgeDocumentIds = knowledgeDocumentIds;
+          addActivity(state, { type: "employee", title: `${employee.name} configuration updated`, detail: `${model} · ${reasoning} reasoning · ${knowledgeDocumentIds.length} attached source${knowledgeDocumentIds.length === 1 ? "" : "s"}` });
+          return state;
+        }
+        case "add-employee-memory": {
+          const employee = findEmployee(state, String(body.employeeId || ""));
+          const memory = String(body.memory || "").trim();
+          if (!employee || !memory) throw new Error("Employee and memory are required.");
+          if (memory.length > 500) throw new Error("Keep an employee memory under 500 characters.");
+          employee.memory = employee.memory || [];
+          if (!employee.memory.some((fact) => fact.toLowerCase() === memory.toLowerCase())) employee.memory.unshift(memory);
+          employee.memory = employee.memory.slice(0, 100);
+          addActivity(state, { type: "employee", title: `${employee.name} memory updated`, detail: "A durable operator fact was saved to the workspace record." });
+          return state;
+        }
+        case "remove-employee-memory": {
+          const employee = findEmployee(state, String(body.employeeId || ""));
+          const memory = String(body.memory || "").trim();
+          if (!employee || !memory) throw new Error("Employee and memory are required.");
+          employee.memory = (employee.memory || []).filter((fact) => fact !== memory);
+          addActivity(state, { type: "employee", title: `${employee.name} memory removed`, detail: "The selected durable operator fact was removed." });
+          return state;
+        }
+        case "toggle-employee-lock": {
+          if (!hasPermission(identity.context, "settings:write")) throw new Error("Only workspace administrators can lock or unlock employee configuration.");
+          const employee = findEmployee(state, String(body.employeeId || ""));
+          if (!employee) throw new Error("Employee not found.");
+          employee.locked = body.locked === true;
+          addActivity(state, { type: "employee", title: `${employee.name} configuration ${employee.locked ? "locked" : "unlocked"}`, detail: employee.locked ? "Only workspace administrators can unlock this employee." : "Configuration changes are available again." });
           return state;
         }
         case "schedule-employee": {
@@ -911,6 +1060,14 @@ async function postWorkspace(request: Request): Promise<Response> {
             : "daily";
           const requestedNextRun = body.nextRunAt ? new Date(String(body.nextRunAt)) : null;
           if (requestedNextRun && Number.isNaN(requestedNextRun.getTime())) throw new Error("The next run time is invalid.");
+          const activeHoursStart = String(body.activeHoursStart || "").trim();
+          const activeHoursEnd = String(body.activeHoursEnd || "").trim();
+          const activeHours = activeHoursStart || activeHoursEnd ? { start: activeHoursStart || "09:00", end: activeHoursEnd || "17:00" } : null;
+          if (activeHours && (!/^([01]\d|2[0-3]):[0-5]\d$/.test(activeHours.start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(activeHours.end))) throw new Error("Active hours must use HH:MM.");
+          const weekdays = Array.isArray(body.weekdays)
+            ? body.weekdays.map(Number).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+            : [0, 1, 2, 3, 4, 5, 6];
+          if (!weekdays.length) throw new Error("Choose at least one active weekday.");
           const schedule: ScheduledWork = {
             id: createId("schedule"),
             name,
@@ -922,6 +1079,10 @@ async function postWorkspace(request: Request): Promise<Response> {
             lastRunAt: null,
             runCount: 0,
             createdAt: timestamp(),
+            activeHours,
+            weekdays: [...new Set(weekdays)],
+            lastOutput: null,
+            runLog: [],
           };
           state.schedules.unshift(schedule);
           addActivity(state, { type: "system", title: `${name} was scheduled`, detail: `${cadence} · ${employeeId ? findEmployee(state, employeeId)?.name : "unassigned"}` });
@@ -931,7 +1092,7 @@ async function postWorkspace(request: Request): Promise<Response> {
           const schedule = state.schedules.find((candidate) => candidate.id === String(body.scheduleId || ""));
           if (!schedule) throw new Error("Schedule not found.");
           schedule.active = body.active !== false;
-          if (schedule.active && new Date(schedule.nextRunAt).getTime() <= Date.now()) schedule.nextRunAt = nextScheduleAt(schedule.cadence);
+          if (schedule.active && new Date(schedule.nextRunAt).getTime() <= Date.now()) schedule.nextRunAt = nextAllowedScheduleAt(schedule, state.profile.timezone, Date.now());
           addActivity(state, { type: "system", title: `${schedule.name} ${schedule.active ? "enabled" : "paused"}`, detail: schedule.active ? `Next run ${schedule.nextRunAt}` : "No scheduled run will fire until it is resumed" });
           return state;
         }
@@ -942,12 +1103,15 @@ async function postWorkspace(request: Request): Promise<Response> {
           if (!employee) throw new Error("Assign a live employee before running this schedule.");
           if (state.workspace.aiCredits.remaining < 2) throw new Error("Not enough AI Credits for a scheduled run.");
           const startedAt = Date.now();
-          const result = await generateEmployeeReply(employee, schedule.description, state.documents);
-          const run = makeRun(state, employee, schedule.description, "heartbeat", result, startedAt);
+          const task = scheduleExecutionTask(schedule);
+          const result = await generateEmployeeReply(employee, task, state.documents);
+          const run = makeRun(state, employee, task, "heartbeat", result, startedAt);
           schedule.lastRunAt = run.createdAt;
           schedule.runCount += 1;
+          schedule.lastOutput = result.content;
+          schedule.runLog = [{ runId: run.id, createdAt: run.createdAt, output: result.content, score: run.score }, ...(schedule.runLog || [])].slice(0, 20);
           schedule.active = schedule.cadence === "once" ? false : schedule.active;
-          schedule.nextRunAt = schedule.active ? nextScheduleAt(schedule.cadence, Date.now()) : schedule.nextRunAt;
+          schedule.nextRunAt = schedule.active ? nextAllowedScheduleAt(schedule, state.profile.timezone, Date.now()) : schedule.nextRunAt;
           addActivity(state, { type: "run", title: `${schedule.name} completed`, detail: `${employee.name} · score ${run.score} · ${result.provider}` });
           return state;
         }
@@ -1180,6 +1344,16 @@ async function postWorkspace(request: Request): Promise<Response> {
         await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "person_qualification", unit: "data", units: 2 });
       } catch {
         if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(updated), persisted: true, error: "The research was saved, but its usage record could not be stored." }, { status: 503 });
+      }
+    }
+    if (action === "run-list-action") {
+      const usage = listActionUsage as { unit: "ai" | "data"; units: number; feature: string } | null;
+      if (usage && usage.units > 0) {
+        try {
+          await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: usage.feature, unit: usage.unit, units: usage.units });
+        } catch {
+          if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(updated), persisted: true, error: "The batch action was saved, but its usage record could not be stored." }, { status: 503 });
+        }
       }
     }
     const responseState = workspaceStateForClient(updated);

@@ -16,6 +16,8 @@ export type Employee = {
   status: "live" | "paused";
   memoryScope: "company" | "employee";
   tools?: string[];
+  memory?: string[];
+  knowledgeDocumentIds?: string[];
   temperature?: number;
   reasoning?: "focused" | "balanced" | "deep";
   locked?: boolean;
@@ -141,6 +143,21 @@ export type SmartList = {
   description: string;
   updatedAt: string;
   rows: SmartRow[];
+  actions?: SmartListAction[];
+};
+
+export type SmartListAction = {
+  id: string;
+  name: string;
+  type: "enrich" | "run_employee" | "suppress" | "enroll";
+  condition: "all" | "new" | "score_at_least";
+  scoreThreshold?: number;
+  employeeId?: string | null;
+  sequenceId?: string | null;
+  active: boolean;
+  lastRunAt: string | null;
+  runCount: number;
+  lastSummary: string | null;
 };
 
 export type Sequence = {
@@ -229,6 +246,10 @@ export type ScheduledWork = {
   lastRunAt: string | null;
   runCount: number;
   createdAt: string;
+  activeHours?: { start: string; end: string } | null;
+  weekdays?: number[];
+  lastOutput?: string | null;
+  runLog?: Array<{ runId: string; createdAt: string; output: string; score: number }>;
 };
 
 export type PersonRecord = {
@@ -509,10 +530,20 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
   const employees = (Array.isArray(legacy.employees) ? legacy.employees : []).map((employee) => {
     const scoreTrend = Array.isArray(employee.scoreTrend) ? employee.scoreTrend : [];
     const positiveScores = scoreTrend.filter((value) => Number.isFinite(value) && value > 0);
+    const tools = Array.isArray(employee.tools) ? employee.tools.filter((tool): tool is string => typeof tool === "string") : [];
+    const memory = Array.isArray(employee.memory) ? employee.memory.filter((fact): fact is string => typeof fact === "string" && fact.trim().length > 0).slice(0, 100) : [];
+    const knowledgeDocumentIds = Array.isArray(employee.knowledgeDocumentIds)
+      ? employee.knowledgeDocumentIds.filter((documentId): documentId is string => typeof documentId === "string")
+      : [];
+    const temperature = typeof employee.temperature === "number" && Number.isFinite(employee.temperature)
+      ? Math.min(1, Math.max(0, employee.temperature))
+      : 0.35;
+    const reasoning = employee.reasoning === "focused" || employee.reasoning === "deep" ? employee.reasoning : "balanced" as const;
+    const normalizedEmployee = { ...employee, tools, memory, knowledgeDocumentIds, temperature, reasoning };
     if (scoreTrend[0] === 0 && positiveScores.length > 0) {
-      return { ...employee, score: positiveScores[positiveScores.length - 1], scoreTrend: positiveScores };
+      return { ...normalizedEmployee, score: positiveScores[positiveScores.length - 1], scoreTrend: positiveScores };
     }
-    return employee;
+    return normalizedEmployee;
   });
   const documents = Array.isArray(legacy.documents) ? legacy.documents : [];
   const onboarding = {
@@ -562,6 +593,7 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
       : [];
   const lists = (Array.isArray(state.lists) ? state.lists : []).map((list) => ({
     ...list,
+    actions: Array.isArray(list.actions) ? list.actions : [],
     rows: list.rows.map((row) => ({
       ...row,
       sequenceId: row.sequenceId ?? null,
@@ -613,7 +645,13 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
     playbooks: Array.isArray(state.playbooks) ? state.playbooks : defaultPlaybooks(),
     lists,
     sequences,
-    schedules: Array.isArray(state.schedules) ? state.schedules : [],
+    schedules: Array.isArray(state.schedules) ? state.schedules.map((schedule) => ({
+      ...schedule,
+      activeHours: schedule.activeHours ?? null,
+      weekdays: Array.isArray(schedule.weekdays) && schedule.weekdays.length ? schedule.weekdays : [0, 1, 2, 3, 4, 5, 6],
+      lastOutput: schedule.lastOutput ?? null,
+      runLog: Array.isArray(schedule.runLog) ? schedule.runLog.slice(0, 20) : [],
+    })) : [],
     people: Array.isArray(state.people) ? state.people : [],
     leadSources: Array.isArray(state.leadSources) ? state.leadSources : [],
     campaigns: Array.isArray(state.campaigns) ? state.campaigns : [],
