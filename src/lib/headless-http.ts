@@ -16,10 +16,17 @@ export function openAiResponse(result: HeadlessChatResult, request: Request, str
     return corsJson({ id, object: "chat.completion", created: Math.floor(Date.now() / 1000), model: result.model, choices: [{ index: 0, message: { role: "assistant", content: result.content }, finish_reason: "stop" }], usage, perpendicular: { employee_id: result.employeeId, employee: result.employeeName, provider: result.provider, citations: result.citations, timings: result.timings } }, undefined, request);
   }
   const encoder = new TextEncoder();
-  const chunks = [
-    { id, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: result.model, choices: [{ index: 0, delta: { role: "assistant", content: result.content }, finish_reason: null }] },
-    { id, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: result.model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
-  ];
+  const pieces = result.content.match(/.{1,120}(?:\s|$)/g)?.map((piece) => piece.trim()).filter(Boolean) || [result.content];
+  const created = Math.floor(Date.now() / 1000);
+  type StreamChunk = { id: string; object: string; created: number; model: string; choices: Array<{ index: number; delta: { role?: string; content?: string }; finish_reason: string | null }> };
+  const chunks: StreamChunk[] = pieces.map((piece, index) => ({
+    id,
+    object: "chat.completion.chunk",
+    created,
+    model: result.model,
+    choices: [{ index: 0, delta: index === 0 ? { role: "assistant", content: piece } : { content: piece }, finish_reason: null }],
+  }));
+  chunks.push({ id, object: "chat.completion.chunk", created, model: result.model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
   const streamBody = new ReadableStream({
     start(controller) {
       for (const chunk of chunks) controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
