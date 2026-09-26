@@ -44,6 +44,7 @@ import { parseLeadCsv, type LeadCsvError } from "@/lib/lead-csv";
 import { scoreLead } from "@/lib/lead-scoring";
 import { nextAllowedScheduleAt, nextScheduleAt, scheduleExecutionTask } from "@/lib/scheduling";
 import { executeWorkspaceApp } from "@/lib/app-runtime";
+import { executeWorkspacePlaybook } from "@/lib/playbook-runtime";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -507,49 +508,16 @@ async function postWorkspace(request: Request): Promise<Response> {
     }
 
     if (action === "run-playbook") {
-      const current = await getWorkspace(companyId);
-      const playbook = current.playbooks.find((candidate) => candidate.id === String(body.playbookId || ""));
-      if (!playbook) return json({ error: "Playbook not found." }, { status: 404 });
-      if (!playbook.installedAt) return json({ error: "Install the playbook before running it." }, { status: 400 });
-      const employeeId = String(body.employeeId || "").trim();
-      const requestedEmployee = findEmployee(current, employeeId);
-      const employee = requestedEmployee?.status === "live"
-        ? requestedEmployee
-        : current.employees.find((candidate) => candidate.department === "Operations" && candidate.status === "live")
-          || current.employees.find((candidate) => candidate.status === "live");
-      if (!employee) return json({ error: "Create a live employee before running this playbook." }, { status: 400 });
-      if (current.workspace.aiCredits.remaining < 2) return json({ error: "Not enough AI Credits for this playbook run." }, { status: 402 });
-      const task = `Run the ${playbook.name} playbook.\n\nSteps:\n${playbook.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}\n\nUse the workspace sources, show what was completed, call out missing evidence, and finish with one owner and one next action.`;
-      const startedAt = Date.now();
-      const result = await generateEmployeeReply(employee, task, current.documents);
-      const next = await updateWorkspace(companyId, (state) => {
-        const liveEmployee = findEmployee(state, employee.id);
-        const livePlaybook = state.playbooks.find((candidate) => candidate.id === playbook.id);
-        if (!liveEmployee || !livePlaybook) return state;
-        const run = makeRun(state, liveEmployee, task, "manual", result, startedAt);
-        const mission: Mission = {
-          id: createId("mission"),
-          title: `${livePlaybook.name} · run`,
-          description: livePlaybook.steps.join(" "),
-          status: "needs_review",
-          priority: "normal",
-          employeeId: liveEmployee.id,
-          sourceDocumentIds: state.documents.map((document) => document.id),
-          output: result.content,
-          runId: run.id,
-          dueAt: null,
-          createdAt: run.createdAt,
-          updatedAt: run.createdAt,
-        };
-        state.missions.unshift(mission);
-        livePlaybook.lastRunAt = run.createdAt;
-        addActivity(state, { type: "playbook", title: `${livePlaybook.name} completed a run`, detail: `${liveEmployee.name} · score ${run.score} · mission ready for review` });
-        return state;
-      });
-      const mission = next.missions[0];
-      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.playbook_run", resourceType: "playbook", resourceId: playbook.id, metadata: { runId: mission?.runId || null, missionId: mission?.id || null } }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The playbook run was saved, but its audit record could not be stored." }, { status: 503 }); }
-      try { await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "playbook_run", unit: "ai", units: 2, provider: result.provider }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The playbook run was saved, but its usage record could not be stored." }, { status: 503 }); }
-      return json({ state: workspaceStateForClient(next), missionId: mission?.id || null, runId: mission?.runId || null, output: mission?.output || result.content, provider: result.provider }, { headers: rateLimitHeaders(identity.context) });
+      try {
+        const execution = await executeWorkspacePlaybook({ workspaceId: companyId, playbookId: String(body.playbookId || ""), employeeId: String(body.employeeId || "").trim() || undefined, input: String(body.input || ""), source: "ui" });
+        try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.playbook_run", resourceType: "playbook", resourceId: execution.playbook.id, metadata: { runId: execution.run.id, missionId: execution.mission.id } }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(execution.state), persisted: true, error: "The playbook run was saved, but its audit record could not be stored." }, { status: 503 }); }
+        try { await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "playbook_run", unit: "ai", units: 2, provider: execution.result.provider }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(execution.state), persisted: true, error: "The playbook run was saved, but its usage record could not be stored." }, { status: 503 }); }
+        return json({ state: workspaceStateForClient(execution.state), missionId: execution.mission.id, runId: execution.run.id, output: execution.run.output, provider: execution.result.provider }, { headers: rateLimitHeaders(identity.context) });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Playbook execution failed.";
+        const status = message === "Playbook not found." ? 404 : message.includes("AI Credits") ? 402 : 400;
+        return json({ error: message }, { status });
+      }
     }
 
     if (action === "run-mission" || action === "generate-content") {

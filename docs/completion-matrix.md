@@ -40,7 +40,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Webhook catalog and dead-letter replay controls | Implemented; provider E2E pending | `/api/ops`, Settings → Operations |
 | Operational health counts for dead letters, failed webhooks, and degraded integrations | Live and deployed | `/api/health`, required schema includes outbound send records |
 | Dell local backup schedule, clean-database restore rehearsal, and off-machine copy | Live | Root cron at 02:15, verified custom-format dump, restore into `perpendicular_restore_check` with 13 platform tables, and Mac launchd pull of `/opt/blueblood/backups/perpendicular` via the existing least-privilege sudo rule |
-| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:fb783d39a3d9d40f94e116b1569da1cf3f50846d14a71b7229e0f43b194d1cdf`, build `dbd71c1`, eight checks, 2026-09-27 |
+| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:95bcedaf167c4ea5a6437d49a542d9c52b3699c9a9848bb2871d4ca86c17879c`, build `c2176ad`, eight checks, 2026-09-27 |
 | Dell heartbeat trigger | Live and verified on the host | Root-owned `/usr/local/sbin/perpendicular-heartbeat`, `flock` lock, API-origin request, and successful authenticated tick on 2026-09-26 |
 | CI verification before image publication | Live | `.github/workflows/perpendicular-image.yml` runs check and production audit before publish |
 
@@ -82,9 +82,9 @@ None of these are replaced with sample data or a green UI state.
 
 Read-only checks on 2026-09-27 found:
 
-- The live API is healthy on promoted immutable image `dbd71c1` (`sha256:fb783d39a3d9d40f94e116b1569da1cf3f50846d14a71b7229e0f43b194d1cdf`); the production smoke suite passed all eight checks, including the public widget entry route and the public site chat route being present in OpenAPI.
+- The live API is healthy on promoted immutable image `c2176ad` (`sha256:95bcedaf167c4ea5a6437d49a542d9c52b3699c9a9848bb2871d4ca86c17879c`); the production smoke suite passed all eight checks, including the public widget entry route and the public site chat route being present in OpenAPI.
 - The authenticated browser session reaches the live workbench, completed a real mission through Dell → Ollama → Postgres, answered a real employee chat, approved the mission, generated grounded content, and created/enriched a Smart List row.
-- The verified UI is live on the Git-connected production deployment from `dbd71c1` (`perpendicular.bluebloodstudio.com`, with `perpendicular-nine.vercel.app` retained as an alias); the production target is `READY` with the expected Company / Chat / Scheduled / People / Lead Data / Campaigns / Keywords / Inbound / Apps navigation.
+- The verified UI is live on the Git-connected production deployment from `c2176ad` (`perpendicular.bluebloodstudio.com`, with `perpendicular-nine.vercel.app` retained as an alias); the production target is `READY` with the expected Company / Chat / Scheduled / People / Lead Data / Campaigns / Keywords / Inbound / Apps navigation.
 - The onboarding proof now attaches the scored first run to the first real mission, so opening the workbench produces a reviewable mission instead of an empty queue.
 - The compatibility migration was exercised against the existing `blueblood-studio` workspace: the Dell row now persists `seq-onboarding-blueblood-studio` with all five draft steps, without resetting the workspace.
 - The Dell host heartbeat is installed as a root-owned helper with a non-overlap lock and calls `https://perpendicular-api.bluebloodstudio.com/api/cron/heartbeat`; an authenticated tick returned successfully.
