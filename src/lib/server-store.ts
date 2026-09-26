@@ -12,6 +12,17 @@ const defaultCompanyId = process.env.DEFAULT_COMPANY_ID || "blueblood-demo";
 let mutationQueue = Promise.resolve();
 const transientStates = new Map<string, WorkspaceState>();
 
+function needsWorkspaceMigration(state: WorkspaceState) {
+  const candidate = state as Partial<WorkspaceState>;
+  return !candidate.profile
+    || !Array.isArray(candidate.missions)
+    || !Array.isArray(candidate.content)
+    || !Array.isArray(candidate.playbooks)
+    || !Array.isArray(state.workspace.onboarding?.employeeIds)
+    || !Array.isArray(state.workspace.onboarding?.missionIds)
+    || !Array.isArray(state.workspace.onboarding?.contentIds);
+}
+
 async function getPool() {
   const database = await getDatabase();
   if (database) {
@@ -86,8 +97,9 @@ export async function getWorkspace(companyId = defaultCompanyId): Promise<Worksp
       [companyId],
     );
     if (result.rows[0]?.state) {
-      const normalized = normalizeWorkspaceState(result.rows[0].state, companyId);
-      if (!result.rows[0].state.workspace.onboarding) await saveWorkspace(companyId, normalized);
+      const raw = result.rows[0].state;
+      const normalized = normalizeWorkspaceState(raw, companyId);
+      if (needsWorkspaceMigration(raw)) await saveWorkspace(companyId, normalized);
       return normalized;
     }
     const initial = createInitialState(companyId);
@@ -98,7 +110,11 @@ export async function getWorkspace(companyId = defaultCompanyId): Promise<Worksp
   if (!allowFileFallback()) throw new Error("Production database is not configured or unavailable.");
 
   const existing = await readFileState(companyId);
-  if (existing) return normalizeWorkspaceState(existing, companyId);
+  if (existing) {
+    const normalized = normalizeWorkspaceState(existing, companyId);
+    if (needsWorkspaceMigration(existing)) await writeFileState(companyId, normalized).catch(() => transientStates.set(companyId, normalized));
+    return normalized;
+  }
   const initial = createInitialState(companyId);
   try {
     await writeFileState(companyId, initial);

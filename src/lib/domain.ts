@@ -12,6 +12,10 @@ export type Employee = {
   model: string;
   status: "live" | "paused";
   memoryScope: "company" | "employee";
+  tools?: string[];
+  temperature?: number;
+  reasoning?: "focused" | "balanced" | "deep";
+  locked?: boolean;
   score: number;
   scoreTrend: number[];
   lastRunAt: string | null;
@@ -159,13 +163,63 @@ export type UsageSummary = {
 
 export type Activity = {
   id: string;
-  type: "employee" | "run" | "lead" | "sequence" | "ticket" | "system";
+  type: "employee" | "run" | "lead" | "sequence" | "ticket" | "mission" | "content" | "playbook" | "system";
   title: string;
   detail: string;
   createdAt: string;
 };
 
 export type OnboardingGoal = "revenue" | "delivery" | "content" | "support";
+
+export type WorkspaceProfile = {
+  industry: string;
+  website: string | null;
+  description: string;
+  idealCustomer: string;
+  goals: string[];
+  brandVoice: string;
+  timezone: string;
+  updatedAt: string;
+};
+
+export type Mission = {
+  id: string;
+  title: string;
+  description: string;
+  status: "ready" | "running" | "needs_review" | "completed" | "blocked";
+  priority: "low" | "normal" | "high";
+  employeeId: string | null;
+  sourceDocumentIds: string[];
+  output: string | null;
+  runId: string | null;
+  dueAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ContentItem = {
+  id: string;
+  title: string;
+  channel: "blog" | "linkedin" | "email" | "social" | "website";
+  objective: string;
+  status: "idea" | "draft" | "review" | "approved" | "scheduled" | "published";
+  body: string;
+  employeeId: string | null;
+  missionId: string | null;
+  scheduledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Playbook = {
+  id: string;
+  name: string;
+  category: "revenue" | "delivery" | "content" | "support" | "operations";
+  description: string;
+  steps: string[];
+  installedAt: string | null;
+  lastRunAt: string | null;
+};
 
 export type OnboardingState = {
   status: "not_started" | "ready" | "completed";
@@ -175,7 +229,10 @@ export type OnboardingState = {
   sourceDescription: string | null;
   discoveredAt: string | null;
   employeeId: string | null;
+  employeeIds: string[];
   documentId: string | null;
+  missionIds: string[];
+  contentIds: string[];
   runId: string | null;
   scheduleEnabled: boolean;
   completedAt: string | null;
@@ -192,10 +249,14 @@ export type WorkspaceState = {
     model: string;
     onboarding: OnboardingState;
   };
+  profile: WorkspaceProfile;
   employees: Employee[];
   documents: DocumentRecord[];
   conversations: Conversation[];
   runs: Run[];
+  missions: Mission[];
+  content: ContentItem[];
+  playbooks: Playbook[];
   lists: SmartList[];
   sequences: Sequence[];
   tickets: Ticket[];
@@ -220,6 +281,50 @@ const now = () => new Date().toISOString();
 
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 
+function defaultPlaybooks(): Playbook[] {
+  return [
+    {
+      id: "playbook-weekly-operator-review",
+      name: "Weekly operator review",
+      category: "operations",
+      description: "Review the workspace context, surface the most important risks, and turn them into owned work.",
+      steps: [
+        "Review the company profile and newest knowledge source.",
+        "Identify the highest-leverage risk or opportunity.",
+        "Create one owned mission with a clear next action.",
+      ],
+      installedAt: null,
+      lastRunAt: null,
+    },
+    {
+      id: "playbook-grounded-content-brief",
+      name: "Grounded content brief",
+      category: "content",
+      description: "Turn real company context into an editorial brief that is ready for a human review.",
+      steps: [
+        "Extract one audience problem from workspace knowledge.",
+        "Draft a specific point of view for the selected channel.",
+        "Create a reviewable content item with its source context attached.",
+      ],
+      installedAt: null,
+      lastRunAt: null,
+    },
+    {
+      id: "playbook-support-triage",
+      name: "Support triage",
+      category: "support",
+      description: "Convert unresolved customer issues into a prioritized support queue with owners and SLA awareness.",
+      steps: [
+        "Review open tickets and their SLA deadlines.",
+        "Assign the next unresolved ticket to the support operator.",
+        "Create a response mission with the missing evidence called out.",
+      ],
+      installedAt: null,
+      lastRunAt: null,
+    },
+  ];
+}
+
 export function ticketSlaMinutes(priority: Ticket["priority"]) {
   return { urgent: 30, high: 120, normal: 480, low: 1440 }[priority];
 }
@@ -233,7 +338,10 @@ export function createOnboardingState(status: OnboardingState["status"] = "not_s
     sourceDescription: null,
     discoveredAt: null,
     employeeId: null,
+    employeeIds: [],
     documentId: null,
+    missionIds: [],
+    contentIds: [],
     runId: null,
     scheduleEnabled: false,
     completedAt: null,
@@ -241,9 +349,78 @@ export function createOnboardingState(status: OnboardingState["status"] = "not_s
 }
 
 export function normalizeWorkspaceState(state: WorkspaceState, companyId: string) {
-  const onboarding = state.workspace.onboarding || createOnboardingState(state.employees.length ? "completed" : "not_started");
+  const timestamp = now();
+  const legacy = state as Partial<WorkspaceState>;
+  const employees = Array.isArray(legacy.employees) ? legacy.employees : [];
+  const documents = Array.isArray(legacy.documents) ? legacy.documents : [];
+  const onboarding = {
+    ...createOnboardingState(employees.length ? "completed" : "not_started"),
+    ...(state.workspace.onboarding || {}),
+    employeeIds: Array.isArray(state.workspace.onboarding?.employeeIds)
+      ? state.workspace.onboarding.employeeIds
+      : state.workspace.onboarding?.employeeId ? [state.workspace.onboarding.employeeId] : [],
+    missionIds: Array.isArray(state.workspace.onboarding?.missionIds) ? state.workspace.onboarding.missionIds : [],
+    contentIds: Array.isArray(state.workspace.onboarding?.contentIds) ? state.workspace.onboarding.contentIds : [],
+  };
+  const legacyRun = Array.isArray(legacy.runs) ? legacy.runs.find((run) => run.employeeId === employees[0]?.id) : undefined;
+  const missions = Array.isArray(legacy.missions)
+    ? legacy.missions
+    : employees.length
+      ? [{
+          id: `mission-legacy-${employees[0].id}`,
+          title: "Turn the workspace context into the next action",
+          description: employees[0].goldenTests?.[0]?.input || "Review the workspace and propose the highest-leverage next action.",
+          status: legacyRun ? "needs_review" as const : "ready" as const,
+          priority: "high" as const,
+          employeeId: employees[0].id,
+          sourceDocumentIds: documents[0] ? [documents[0].id] : [],
+          output: legacyRun?.output || null,
+          runId: legacyRun?.id || null,
+          dueAt: null,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        }]
+      : [];
+  const content = Array.isArray(legacy.content)
+    ? legacy.content
+    : employees.length
+      ? [{
+          id: `content-legacy-${employees[0].id}`,
+          title: "First grounded company point of view",
+          channel: "linkedin" as const,
+          objective: "Turn the existing workspace context into one useful, specific draft for review.",
+          status: "idea" as const,
+          body: "",
+          employeeId: employees.find((employee) => employee.department === "Content")?.id || employees[0].id,
+          missionId: missions[0]?.id || null,
+          scheduledAt: null,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        }]
+      : [];
   return {
     ...state,
+    profile: state.profile || {
+      industry: "",
+      website: null,
+      description: "",
+      idealCustomer: "",
+      goals: [],
+      brandVoice: "Direct, grounded, and specific.",
+      timezone: "UTC",
+      updatedAt: timestamp,
+    },
+    employees,
+    documents,
+    conversations: Array.isArray(state.conversations) ? state.conversations : [],
+    runs: Array.isArray(state.runs) ? state.runs : [],
+    missions,
+    content,
+    playbooks: Array.isArray(state.playbooks) ? state.playbooks : defaultPlaybooks(),
+    lists: Array.isArray(state.lists) ? state.lists : [],
+    sequences: Array.isArray(state.sequences) ? state.sequences : [],
+    tickets: Array.isArray(state.tickets) ? state.tickets : [],
+    activity: Array.isArray(state.activity) ? state.activity : [],
     suppressedEmails: Array.isArray(state.suppressedEmails) ? state.suppressedEmails.map((email) => email.toLowerCase()) : [],
     workspace: {
       ...state.workspace,
@@ -267,10 +444,23 @@ function createEmptyState(companyId: string): WorkspaceState {
       model: process.env.OLLAMA_MODEL ? `Ollama · ${process.env.OLLAMA_MODEL}` : "Ollama · not configured",
       onboarding: createOnboardingState(),
     },
+    profile: {
+      industry: "",
+      website: null,
+      description: "",
+      idealCustomer: "",
+      goals: [],
+      brandVoice: "Direct, grounded, and specific.",
+      timezone: "UTC",
+      updatedAt: now(),
+    },
     employees: [],
     documents: [],
     conversations: [],
     runs: [],
+    missions: [],
+    content: [],
+    playbooks: defaultPlaybooks(),
     lists: [],
     sequences: [],
     tickets: [],
@@ -410,11 +600,24 @@ export function createInitialState(companyId = "blueblood-demo"): WorkspaceState
         sourceDescription: "Demo workspace seeded for local development.",
         discoveredAt: timestamp,
         employeeId: atlas.id,
+        employeeIds: employees.map((employee) => employee.id),
         documentId: "doc-icp",
+        missionIds: ["mission-pipeline", "mission-content", "mission-support"],
+        contentIds: ["content-positioning"],
         runId: "run-atlas-1",
         scheduleEnabled: true,
         completedAt: timestamp,
       },
+    },
+    profile: {
+      industry: "Digital product studio",
+      website: "https://bluebloodstudio.com",
+      description: "Blueblood Studio builds AI-first digital products for ambitious teams.",
+      idealCustomer: "AI-first SaaS, D2C brands, and premium digital agencies.",
+      goals: ["Create reliable growth follow-through", "Ship grounded content", "Keep delivery visible"],
+      brandVoice: "Direct, grounded, and concrete. Avoid vague transformation language.",
+      timezone: "Asia/Kolkata",
+      updatedAt: timestamp,
     },
     employees,
     documents: [
@@ -504,6 +707,66 @@ export function createInitialState(companyId = "blueblood-demo"): WorkspaceState
         ],
       },
     ],
+    missions: [
+      {
+        id: "mission-pipeline",
+        title: "Rescue the highest-fit opportunity",
+        description: "Review the current pipeline context and propose the next action for the account with the clearest buying signal.",
+        status: "needs_review",
+        priority: "high",
+        employeeId: atlas.id,
+        sourceDocumentIds: ["doc-icp", "doc-gtm"],
+        output: "Meridian is the highest-leverage rescue. Next: send the founder a two-line teardown and offer a 20-minute working session.",
+        runId: "run-atlas-1",
+        dueAt: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
+        createdAt: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
+        updatedAt: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
+      },
+      {
+        id: "mission-content",
+        title: "Turn the positioning into one useful post",
+        description: "Draft a specific point of view about reliable AI product delivery, using the workspace voice and evidence.",
+        status: "ready",
+        priority: "normal",
+        employeeId: nova.id,
+        sourceDocumentIds: ["doc-icp", "doc-voice"],
+        output: null,
+        runId: null,
+        dueAt: new Date(Date.now() + 1000 * 60 * 60 * 48).toISOString(),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      {
+        id: "mission-support",
+        title: "Close the open support loop",
+        description: "Review the highest-priority open ticket, identify the missing evidence, and write the next customer update.",
+        status: "ready",
+        priority: "high",
+        employeeId: rhea.id,
+        sourceDocumentIds: ["doc-gtm"],
+        output: null,
+        runId: null,
+        dueAt: new Date(Date.now() + 1000 * 60 * 60 * 6).toISOString(),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    ],
+    content: [
+      {
+        id: "content-positioning",
+        title: "Reliable AI delivery is a workflow problem",
+        channel: "linkedin",
+        objective: "Create a grounded point of view for AI-first product teams.",
+        status: "review",
+        body: "Build the growth system your team can actually run. The strongest advantage is not another promise; it is visible follow-through from context to owner to next action.",
+        employeeId: nova.id,
+        missionId: "mission-content",
+        scheduledAt: null,
+        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
+        updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
+      },
+    ],
+    playbooks: defaultPlaybooks().map((playbook) => ({ ...playbook, installedAt: timestamp })),
     lists: [
       {
         id: "list-growth",
@@ -784,28 +1047,152 @@ export function buildOnboardingArtifacts(args: {
     updatedAt: createdAt,
     employeeIds: [],
   };
-  const prompt = [
-    `You are ${goalDetails.name}, the ${goalDetails.title} for ${args.companyName}.`,
-    `Your job is to improve ${args.goal} outcomes using only the workspace context.`,
-    "Separate facts from assumptions, cite the source by name, and finish every response with one owner and one next action.",
-  ].join(" ");
-  const employee: Employee = {
+  const roleTemplates: Array<{ name: string; title: string; department: Department; task: string; expected: string; tools: string[] }> = [
+    {
+      name: "Scout",
+      title: "Research Operator",
+      department: "Growth",
+      task: "Extract the strongest customer, market, or buying signal from the discovered company context and explain what evidence is still missing.",
+      expected: "Evidence-backed signal with a clear next action",
+      tools: ["workspace_search", "public_research", "mission_write"],
+    },
+    {
+      name: "Signal",
+      title: "Content Operator",
+      department: "Content",
+      task: "Turn the discovered company context into one specific content angle that would be useful to the ideal customer.",
+      expected: "Grounded content angle with proof requirements",
+      tools: ["workspace_search", "content_draft", "mission_write"],
+    },
+    {
+      name: "Relay",
+      title: "Delivery Operator",
+      department: "Operations",
+      task: "Review the discovered company context and propose the three highest-leverage delivery actions for this week.",
+      expected: "Grounded delivery priorities with owners and next actions",
+      tools: ["workspace_search", "mission_write", "schedule"],
+    },
+    {
+      name: "Harbor",
+      title: "Support Operator",
+      department: "Support",
+      task: "Review the discovered company context and identify the customer experience risk that deserves the fastest response.",
+      expected: "Support risk with an owner, SLA, and next action",
+      tools: ["workspace_search", "ticket_read", "mission_write"],
+    },
+  ];
+  const primary: Employee = {
     id: createId("emp"),
     name: goalDetails.name,
     title: goalDetails.title,
     department: goalDetails.department,
     avatar: goalDetails.name.slice(0, 2).toUpperCase(),
-    systemPrompt: prompt,
+    systemPrompt: [
+      `You are ${goalDetails.name}, the ${goalDetails.title} for ${args.companyName}.`,
+      `Your job is to improve ${args.goal} outcomes using only the workspace context.`,
+      "Separate facts from assumptions, cite the source by name, and finish every response with one owner and one next action.",
+    ].join(" "),
     model: process.env.OLLAMA_MODEL ? `Ollama · ${process.env.OLLAMA_MODEL}` : "Ollama · not configured",
     status: "live",
     memoryScope: "company",
+    tools: ["workspace_search", "mission_write", "profile_read"],
+    temperature: 0.35,
+    reasoning: "balanced",
+    locked: false,
     score: 0,
     scoreTrend: [0],
     lastRunAt: null,
     schedule: null,
-    promptVersions: [{ id: createId("pv"), version: 1, prompt, author: "Perpendicular onboarding", createdAt, note: "Created from live workspace discovery.", active: true }],
+    promptVersions: [{ id: createId("pv"), version: 1, prompt: "", author: "Perpendicular onboarding", createdAt, note: "Created from live workspace discovery.", active: true }],
     goldenTests: [{ id: createId("gt"), input: goalDetails.task, expected: goalDetails.expected, lastScore: 0 }],
   };
-  document.employeeIds = [employee.id];
-  return { employee, document, task: goalDetails.task, sourceDescription };
+  primary.promptVersions[0].prompt = primary.systemPrompt;
+  const employees = [primary, ...roleTemplates.filter((role) => role.department !== primary.department).map((role) => {
+    const prompt = [
+      `You are ${role.name}, the ${role.title} for ${args.companyName}.`,
+      `Your job is to support ${args.goal} outcomes using only the workspace context.`,
+      "Separate facts from assumptions, cite the source by name, and finish every response with one owner and one next action.",
+    ].join(" ");
+    return {
+      id: createId("emp"),
+      name: role.name,
+      title: role.title,
+      department: role.department,
+      avatar: role.name.slice(0, 2).toUpperCase(),
+      systemPrompt: prompt,
+      model: process.env.OLLAMA_MODEL ? `Ollama · ${process.env.OLLAMA_MODEL}` : "Ollama · not configured",
+      status: "live" as const,
+      memoryScope: "company" as const,
+      tools: role.tools,
+      temperature: 0.35,
+      reasoning: "balanced" as const,
+      locked: false,
+      score: 0,
+      scoreTrend: [0],
+      lastRunAt: null,
+      schedule: null,
+      promptVersions: [{ id: createId("pv"), version: 1, prompt, author: "Perpendicular onboarding", createdAt, note: "Created from live workspace discovery.", active: true }],
+      goldenTests: [{ id: createId("gt"), input: role.task, expected: role.expected, lastScore: 0 }],
+    } satisfies Employee;
+  })];
+  document.employeeIds = [primary.id];
+  const missions: Mission[] = employees.map((employee, index) => {
+    const role = employee.id === primary.id
+      ? { title: `Set the first ${args.goal} priority`, description: goalDetails.task, priority: "high" as const }
+      : (() => {
+          const template = roleTemplates.find((item) => item.department === employee.department);
+          return template
+            ? { title: template.title, description: template.task, priority: "normal" as const }
+            : { title: `Review ${employee.department.toLowerCase()}`, description: employee.goldenTests[0]?.input || "Review the workspace and propose the next action.", priority: "normal" as const };
+        })();
+    return {
+      id: createId("mission"),
+      title: role.title,
+      description: role.description,
+      status: "ready" as const,
+      priority: role.priority,
+      employeeId: employee.id,
+      sourceDocumentIds: [document.id],
+      output: null,
+      runId: null,
+      dueAt: new Date(Date.now() + 1000 * 60 * 60 * (index === 0 ? 24 : 72)).toISOString(),
+      createdAt,
+      updatedAt: createdAt,
+    };
+  });
+  const contentEmployee = employees.find((employee) => employee.department === "Content") || primary;
+  const content: ContentItem[] = [{
+    id: createId("content"),
+    title: `First ${args.companyName} point of view`,
+    channel: "linkedin",
+    objective: "Turn the real company context into one useful, specific point of view for the ideal customer.",
+    status: "idea",
+    body: "",
+    employeeId: contentEmployee.id,
+    missionId: missions.find((mission) => mission.employeeId === contentEmployee.id)?.id || null,
+    scheduledAt: null,
+    createdAt,
+    updatedAt: createdAt,
+  }];
+  const profile: WorkspaceProfile = {
+    industry: "To be confirmed from company context",
+    website: args.discovery.url,
+    description: sourceDescription,
+    idealCustomer: "To be confirmed. Ask the system to refine this from your source.",
+    goals: [goalDetails.task],
+    brandVoice: "Direct, grounded, and specific. Separate facts from assumptions.",
+    timezone: process.env.DEFAULT_TIMEZONE || "UTC",
+    updatedAt: createdAt,
+  };
+  return {
+    employee: primary,
+    employees,
+    document,
+    missions,
+    content,
+    profile,
+    playbooks: defaultPlaybooks(),
+    task: goalDetails.task,
+    sourceDescription,
+  };
 }

@@ -9,7 +9,9 @@ import {
   ticketSlaMinutes,
   type OnboardingDiscovery,
   type OnboardingGoal,
+  type ContentItem,
   type Employee,
+  type Mission,
   type WorkspaceState,
 } from "@/lib/domain";
 import { generateEmployeeReply } from "@/lib/llm";
@@ -56,6 +58,14 @@ async function getIdentity(request: Request): Promise<{ context: IdentityContext
 
 function findEmployee(state: WorkspaceState, employeeId: string) {
   return state.employees.find((employee) => employee.id === employeeId);
+}
+
+function findMission(state: WorkspaceState, missionId: string) {
+  return state.missions.find((mission) => mission.id === missionId);
+}
+
+function findContent(state: WorkspaceState, contentId: string) {
+  return state.content.find((item) => item.id === contentId);
 }
 
 function makeRun(state: WorkspaceState, employee: Employee, task: string, trigger: "manual" | "heartbeat" | "evaluation", output: string) {
@@ -179,8 +189,12 @@ async function postWorkspace(request: Request): Promise<Response> {
         if (state.workspace.onboarding.employeeId && state.workspace.onboarding.documentId) return state;
         const artifacts = buildOnboardingArtifacts({ companyId, companyName, goal, discovery });
         state.workspace.name = companyName;
-        state.employees.unshift(artifacts.employee);
-        state.documents.unshift(artifacts.document);
+        state.profile = artifacts.profile;
+        state.employees.unshift(...artifacts.employees);
+        state.documents.unshift({ ...artifacts.document, employeeIds: artifacts.employees.map((employee) => employee.id) });
+        state.missions.unshift(...artifacts.missions);
+        state.content.unshift(...artifacts.content);
+        state.playbooks = state.playbooks.length ? state.playbooks : artifacts.playbooks;
         state.workspace.onboarding = {
           ...createOnboardingState("ready"),
           goal,
@@ -189,9 +203,12 @@ async function postWorkspace(request: Request): Promise<Response> {
           sourceDescription: artifacts.sourceDescription,
           discoveredAt: timestamp(),
           employeeId: artifacts.employee.id,
+          employeeIds: artifacts.employees.map((employee) => employee.id),
           documentId: artifacts.document.id,
+          missionIds: artifacts.missions.map((mission) => mission.id),
+          contentIds: artifacts.content.map((item) => item.id),
         };
-        addActivity(state, { type: "system", title: `${companyName} was discovered`, detail: `${artifacts.document.name} indexed · ${artifacts.employee.name} is ready for a first brief`, });
+        addActivity(state, { type: "system", title: `${companyName} was discovered`, detail: `${artifacts.document.name} indexed · ${artifacts.employees.length} operators and ${artifacts.missions.length} missions are ready`, });
         return state;
       });
       try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.bootstrap", metadata: { goal, source: discovery.url ? "public_url" : "operator_brief" } }); } catch { if (process.env.NODE_ENV === "production") return json({ state: next, persisted: true, error: "The workspace was created, but its audit record could not be stored." }, { status: 503 }); }
@@ -280,8 +297,159 @@ async function postWorkspace(request: Request): Promise<Response> {
       return json({ state: next, provider: result.provider }, { headers: rateLimitHeaders(identity.context) });
     }
 
+    if (action === "run-mission" || action === "generate-content") {
+      const current = await getWorkspace(companyId);
+      const mission = action === "run-mission" ? findMission(current, String(body.missionId || "")) : undefined;
+      const content = action === "generate-content" ? findContent(current, String(body.contentId || "")) : undefined;
+      const employeeId = mission?.employeeId || content?.employeeId || String(body.employeeId || "");
+      const employee = findEmployee(current, employeeId) || current.employees.find((candidate) => candidate.status === "live");
+      if (action === "run-mission" && !mission) return json({ error: "Mission not found." }, { status: 404 });
+      if (action === "generate-content" && !content) return json({ error: "Content item not found." }, { status: 404 });
+      if (!employee) return json({ error: "Assign an employee before running this work." }, { status: 400 });
+      if (current.workspace.aiCredits.remaining < 2) return json({ error: "Not enough AI Credits for this run." }, { status: 402 });
+      const task = mission
+        ? `${mission.title}\n\nMission: ${mission.description}\n\nUse the workspace sources, state what is known, identify missing evidence, and finish with an owner and next action.`
+        : `Create a ${content?.channel} draft titled "${content?.title}". Objective: ${content?.objective}. Use only the workspace context, preserve the company's voice, avoid unsupported claims, and return the draft plus one note about evidence that still needs review.`;
+      const result = await generateEmployeeReply(employee, task, current.documents);
+      const next = await updateWorkspace(companyId, (state) => {
+        const liveEmployee = findEmployee(state, employee.id);
+        if (!liveEmployee) return state;
+        const run = makeRun(state, liveEmployee, task, "manual", result.content);
+        run.trace[2].detail = `${liveEmployee.model} · ${result.provider}`;
+        if (mission) {
+          const liveMission = findMission(state, mission.id);
+          if (liveMission) {
+            liveMission.status = "needs_review";
+            liveMission.output = result.content;
+            liveMission.runId = run.id;
+            liveMission.updatedAt = run.createdAt;
+          }
+          addActivity(state, { type: "mission", title: `${mission.title} is ready for review`, detail: `${liveEmployee.name} · score ${run.score}`, });
+        } else if (content) {
+          const liveContent = findContent(state, content.id);
+          if (liveContent) {
+            liveContent.status = "review";
+            liveContent.body = result.content;
+            liveContent.employeeId = liveEmployee.id;
+            liveContent.updatedAt = run.createdAt;
+          }
+          addActivity(state, { type: "content", title: `${content.title} is ready for review`, detail: `${liveEmployee.name} · ${content.channel} draft · score ${run.score}`, });
+        }
+        return state;
+      });
+      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: `workspace.${action}`, resourceType: mission ? "mission" : "content", resourceId: mission?.id || content?.id }); } catch { if (process.env.NODE_ENV === "production") return json({ state: next, persisted: true, error: "The work was saved, but its audit record could not be stored." }, { status: 503 }); }
+      try { await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: mission ? "mission_run" : "content_generation", unit: "ai", units: 2, provider: result.provider }); } catch { if (process.env.NODE_ENV === "production") return json({ state: next, persisted: true, error: "The work was saved, but its usage record could not be stored." }, { status: 503 }); }
+      return json({ state: next, provider: result.provider }, { headers: rateLimitHeaders(identity.context) });
+    }
+
     const updated = await updateWorkspace(companyId, async (state) => {
       switch (action) {
+        case "update-profile": {
+          const nextProfile = { ...state.profile };
+          for (const key of ["industry", "website", "description", "idealCustomer", "brandVoice", "timezone"] as const) {
+            if (body[key] !== undefined) {
+              const value = String(body[key] || "").trim();
+              if (key === "website") nextProfile.website = value || null;
+              else nextProfile[key] = value || nextProfile[key];
+            }
+          }
+          if (body.goals !== undefined) {
+            if (!Array.isArray(body.goals)) throw new Error("Goals must be a list of strings.");
+            nextProfile.goals = body.goals.map((goal) => String(goal).trim()).filter(Boolean).slice(0, 12);
+          }
+          nextProfile.updatedAt = timestamp();
+          state.profile = nextProfile;
+          addActivity(state, { type: "system", title: "Company context updated", detail: "The profile is now available to every scoped operator." });
+          return state;
+        }
+        case "create-mission": {
+          const title = String(body.title || "").trim();
+          const description = String(body.description || "").trim();
+          if (!title || !description) throw new Error("Mission title and description are required.");
+          const employeeId = String(body.employeeId || "").trim() || null;
+          if (employeeId && !findEmployee(state, employeeId)) throw new Error("Assigned employee not found.");
+          const priority = (["low", "normal", "high"] as const).includes(body.priority as never) ? body.priority as Mission["priority"] : "normal";
+          const mission: Mission = { id: createId("mission"), title, description, status: "ready", priority, employeeId, sourceDocumentIds: [], output: null, runId: null, dueAt: body.dueAt ? String(body.dueAt) : null, createdAt: timestamp(), updatedAt: timestamp() };
+          state.missions.unshift(mission);
+          addActivity(state, { type: "mission", title: `${mission.title} was created`, detail: employeeId ? `Assigned to ${findEmployee(state, employeeId)?.name || "operator"}` : "Unassigned mission" });
+          return state;
+        }
+        case "delegate-mission": {
+          const mission = findMission(state, String(body.missionId || ""));
+          const employeeId = String(body.employeeId || "").trim();
+          if (!mission || !employeeId || !findEmployee(state, employeeId)) throw new Error("Mission or employee not found.");
+          mission.employeeId = employeeId;
+          mission.updatedAt = timestamp();
+          addActivity(state, { type: "mission", title: `${mission.title} was delegated`, detail: `Assigned to ${findEmployee(state, employeeId)?.name}` });
+          return state;
+        }
+        case "approve-mission":
+        case "complete-mission": {
+          const mission = findMission(state, String(body.missionId || ""));
+          if (!mission) throw new Error("Mission not found.");
+          if (action === "approve-mission" && mission.status !== "needs_review") throw new Error("Run the mission before approving its result.");
+          mission.status = "completed";
+          mission.updatedAt = timestamp();
+          addActivity(state, { type: "mission", title: `${mission.title} was completed`, detail: mission.output ? "Output approved by the workspace operator" : "Completed without an AI output" });
+          return state;
+        }
+        case "create-content": {
+          const title = String(body.title || "").trim();
+          const objective = String(body.objective || "").trim();
+          if (!title || !objective) throw new Error("Content title and objective are required.");
+          const channels = ["blog", "linkedin", "email", "social", "website"] as const;
+          const channel = channels.includes(body.channel as never) ? body.channel as ContentItem["channel"] : "linkedin";
+          const employeeId = String(body.employeeId || "").trim() || state.employees.find((employee) => employee.department === "Content")?.id || null;
+          const item: ContentItem = { id: createId("content"), title, channel, objective, status: "idea", body: "", employeeId, missionId: null, scheduledAt: null, createdAt: timestamp(), updatedAt: timestamp() };
+          state.content.unshift(item);
+          addActivity(state, { type: "content", title: `${item.title} was added`, detail: `${item.channel} · ready for a grounded draft` });
+          return state;
+        }
+        case "approve-content": {
+          const item = findContent(state, String(body.contentId || ""));
+          if (!item || !item.body) throw new Error("Generate the content draft before approving it.");
+          item.status = "approved";
+          item.updatedAt = timestamp();
+          addActivity(state, { type: "content", title: `${item.title} was approved`, detail: "Ready to schedule or publish from the editorial workflow" });
+          return state;
+        }
+        case "schedule-content": {
+          const item = findContent(state, String(body.contentId || ""));
+          if (!item || !["approved", "scheduled"].includes(item.status)) throw new Error("Approve the content before scheduling it.");
+          const scheduledAt = body.scheduledAt ? new Date(String(body.scheduledAt)) : new Date(Date.now() + 1000 * 60 * 60);
+          if (Number.isNaN(scheduledAt.getTime())) throw new Error("Scheduled time is invalid.");
+          item.status = "scheduled";
+          item.scheduledAt = scheduledAt.toISOString();
+          item.updatedAt = timestamp();
+          addActivity(state, { type: "content", title: `${item.title} was scheduled`, detail: `${item.channel} · ${scheduledAt.toLocaleString()}` });
+          return state;
+        }
+        case "publish-content": {
+          const item = findContent(state, String(body.contentId || ""));
+          if (!item || !["approved", "scheduled"].includes(item.status)) throw new Error("Approve the content before publishing it.");
+          item.status = "published";
+          item.updatedAt = timestamp();
+          addActivity(state, { type: "content", title: `${item.title} was marked published`, detail: "Editorial state updated. Connect a channel publisher to send externally." });
+          return state;
+        }
+        case "install-playbook": {
+          const playbook = state.playbooks.find((candidate) => candidate.id === String(body.playbookId || ""));
+          if (!playbook) throw new Error("Playbook not found.");
+          playbook.installedAt = playbook.installedAt || timestamp();
+          addActivity(state, { type: "playbook", title: `${playbook.name} was installed`, detail: `${playbook.steps.length} executable steps are ready` });
+          return state;
+        }
+        case "run-playbook": {
+          const playbook = state.playbooks.find((candidate) => candidate.id === String(body.playbookId || ""));
+          if (!playbook) throw new Error("Playbook not found.");
+          if (!playbook.installedAt) throw new Error("Install the playbook before running it.");
+          const employeeId = String(body.employeeId || "").trim() || state.employees.find((employee) => employee.department === "Operations")?.id || state.employees[0]?.id || null;
+          const mission: Mission = { id: createId("mission"), title: `${playbook.name} · next run`, description: playbook.steps.join(" "), status: "ready", priority: "normal", employeeId, sourceDocumentIds: [], output: null, runId: null, dueAt: null, createdAt: timestamp(), updatedAt: timestamp() };
+          state.missions.unshift(mission);
+          playbook.lastRunAt = mission.createdAt;
+          addActivity(state, { type: "playbook", title: `${playbook.name} created a mission`, detail: employeeId ? `Assigned to ${findEmployee(state, employeeId)?.name}` : "Assign an operator to run it" });
+          return state;
+        }
         case "create-employee": {
           const title = String(body.title || "").trim();
           if (!title) throw new Error("Title is required.");

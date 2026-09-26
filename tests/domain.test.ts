@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildFallbackReply, buildOnboardingArtifacts, createInitialState, findRelevantDocuments, scoreRun, ticketSlaMinutes } from "../src/lib/domain";
+import { buildFallbackReply, buildOnboardingArtifacts, createInitialState, findRelevantDocuments, normalizeWorkspaceState, scoreRun, ticketSlaMinutes, type WorkspaceState } from "../src/lib/domain";
 
 test("seed workspace has the core employee -> knowledge -> run loop", () => {
   const state = createInitialState();
@@ -60,7 +60,7 @@ test("run scoring rewards evidence and ownership without exceeding the rubric", 
   assert.ok(score <= 98);
 });
 
-test("onboarding builds one real source and one scoped operator", () => {
+test("onboarding builds a source, an operator pod, and executable work", () => {
   const result = buildOnboardingArtifacts({
     companyId: "blueblood-studio",
     companyName: "Blueblood Studio",
@@ -73,10 +73,39 @@ test("onboarding builds one real source and one scoped operator", () => {
     },
   });
   assert.equal(result.employee.department, "Content");
+  assert.equal(result.employees.length, 4);
+  assert.equal(result.missions.length, 4);
+  assert.equal(result.content.length, 1);
+  assert.ok(result.employees.every((employee) => employee.tools && employee.tools.length > 0));
+  assert.ok(result.missions.every((mission) => mission.sourceDocumentIds.includes(result.document.id)));
   assert.equal(result.document.source, "url");
   assert.deepEqual(result.document.employeeIds, [result.employee.id]);
   assert.match(result.employee.systemPrompt, /Blueblood Studio/);
   assert.match(result.task, /content/i);
+});
+
+test("seed workspace exposes the durable operating surfaces", () => {
+  const state = createInitialState();
+  assert.ok(state.profile.description);
+  assert.ok(state.missions.some((mission) => mission.status === "needs_review"));
+  assert.ok(state.content.some((item) => item.status === "review"));
+  assert.ok(state.playbooks.every((playbook) => playbook.installedAt));
+});
+
+test("legacy one-operator workspaces receive a deterministic work queue", () => {
+  const legacy = JSON.parse(JSON.stringify(createInitialState())) as WorkspaceState;
+  delete (legacy as Partial<WorkspaceState>).profile;
+  delete (legacy as Partial<WorkspaceState>).missions;
+  delete (legacy as Partial<WorkspaceState>).content;
+  delete (legacy as Partial<WorkspaceState>).playbooks;
+  delete (legacy.workspace.onboarding as Partial<WorkspaceState["workspace"]["onboarding"]>).employeeIds;
+  delete (legacy.workspace.onboarding as Partial<WorkspaceState["workspace"]["onboarding"]>).missionIds;
+  delete (legacy.workspace.onboarding as Partial<WorkspaceState["workspace"]["onboarding"]>).contentIds;
+  const migrated = normalizeWorkspaceState(legacy, "legacy-company");
+  assert.equal(migrated.missions.length, 1);
+  assert.equal(migrated.content.length, 1);
+  assert.equal(migrated.missions[0].id, `mission-legacy-${legacy.employees[0].id}`);
+  assert.deepEqual(migrated.workspace.onboarding.employeeIds, [legacy.workspace.onboarding.employeeId]);
 });
 
 test("ticket SLA windows follow the operational priority contract", () => {
