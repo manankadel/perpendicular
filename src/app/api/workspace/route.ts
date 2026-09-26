@@ -356,9 +356,17 @@ async function postWorkspace(request: Request): Promise<Response> {
         const liveEmployee = findEmployee(state, employee.id);
         if (!liveEmployee) return state;
         const run = makeRun(state, liveEmployee, task, "manual", result, startedAt);
+        const firstMissionId = state.workspace.onboarding.missionIds[0];
+        const firstMission = firstMissionId ? findMission(state, firstMissionId) : state.missions.find((mission) => mission.employeeId === liveEmployee.id && mission.status === "ready");
+        if (firstMission) {
+          firstMission.status = "needs_review";
+          firstMission.output = result.content;
+          firstMission.runId = run.id;
+          firstMission.updatedAt = run.createdAt;
+        }
         state.workspace.onboarding.status = "proved";
         state.workspace.onboarding.runId = run.id;
-        addActivity(state, { type: "run", title: `${liveEmployee.name} delivered the first brief`, detail: `Score ${run.score} · grounded in ${state.documents[0]?.name || "workspace context"}`, });
+        addActivity(state, { type: "run", title: `${liveEmployee.name} delivered the first brief`, detail: `Score ${run.score} · ${firstMission ? `${firstMission.title} is ready for review` : `grounded in ${state.documents[0]?.name || "workspace context"}`}`, });
         return state;
       });
       try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.onboarding_run", resourceType: "employee", resourceId: employee.id }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The brief was saved, but its audit record could not be stored." }, { status: 503 }); }
@@ -370,7 +378,7 @@ async function postWorkspace(request: Request): Promise<Response> {
       const next = await updateWorkspace(companyId, (state) => {
         const onboarding = state.workspace.onboarding;
         const employee = onboarding.employeeId ? findEmployee(state, onboarding.employeeId) : undefined;
-        if (!employee || !onboarding.goal) throw new Error("Run the first brief before enabling the daily rhythm.");
+        if (!employee || !onboarding.goal || !onboarding.runId || onboarding.status !== "proved") throw new Error("Run the first brief before enabling the daily rhythm.");
         const task = employee.goldenTests[0]?.input || "Review the workspace and write the highest-leverage next action for this week.";
         employee.schedule = { enabled: true, cadence: "daily", task, nextRunAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() };
         state.workspace.onboarding.scheduleEnabled = true;

@@ -319,6 +319,9 @@ test("onboarding keeps the proof step visible until the operator chooses a repea
   const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
   assert.match(domain, /status: "not_started" \| "ready" \| "proved" \| "completed"/);
   assert.match(workspace, /state\.workspace\.onboarding\.status = "proved"/);
+  assert.match(workspace, /firstMission\.status = "needs_review"/);
+  assert.match(workspace, /firstMission\.runId = run\.id/);
+  assert.match(workspace, /!onboarding\.runId \|\| onboarding\.status !== "proved"/);
   assert.match(workspace, /action === "finish-onboarding"/);
   assert.match(console, /Open workbench/);
 });
