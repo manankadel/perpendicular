@@ -21,6 +21,30 @@ const requiredTables = [
   "perpendicular_rate_limits",
 ] as const;
 
+type OllamaReadiness = {
+  ok: boolean;
+  model: string;
+  reason?: string;
+};
+
+async function checkOllamaReadiness(): Promise<OllamaReadiness> {
+  if (process.env.DISABLE_OLLAMA === "true") return { ok: false, model: "disabled", reason: "ollama_disabled" };
+  const baseUrl = (process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434").replace(/\/$/, "");
+  const model = process.env.OLLAMA_MODEL || "qwen2.5:3b";
+  try {
+    const response = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(3000), cache: "no-store" });
+    if (!response.ok) return { ok: false, model, reason: `ollama_http_${response.status}` };
+    const payload = await response.json() as { models?: Array<{ name?: string }> };
+    const available = (payload.models || []).map((entry) => entry.name || "").filter(Boolean);
+    if (!available.some((candidate) => candidate === model || candidate.startsWith(`${model}:`))) {
+      return { ok: false, model, reason: "ollama_model_missing" };
+    }
+    return { ok: true, model };
+  } catch {
+    return { ok: false, model, reason: "ollama_unreachable" };
+  }
+}
+
 export function OPTIONS(request: Request) {
   return new Response(null, { status: 204, headers: corsHeadersFor(request) });
 }
@@ -28,6 +52,7 @@ export function OPTIONS(request: Request) {
 export async function GET(request: Request) {
   const database = await getDatabase();
   const production = process.env.NODE_ENV === "production";
+  const ollama = await checkOllamaReadiness();
   const gmailOAuthConfigured = Boolean(
     (process.env.GOOGLE_GMAIL_CLIENT_ID || process.env.GOOGLE_OAUTH_CLIENT_ID)
       && (process.env.GOOGLE_GMAIL_CLIENT_SECRET || process.env.GOOGLE_OAUTH_CLIENT_SECRET),
@@ -39,6 +64,7 @@ export async function GET(request: Request) {
     !gmailOAuthConfigured ? "gmail_oauth" : null,
     !gmailPushConfigured ? "gmail_webhook_secret" : null,
     !integrationEncryptionConfigured ? "integration_encryption_key" : null,
+    production && !ollama.ok ? ollama.reason : null,
   ].filter((gap): gap is string => Boolean(gap));
   let schema: { ok: boolean; missingTables: string[] } | null = null;
   if (database) {
@@ -55,7 +81,7 @@ export async function GET(request: Request) {
     }
   }
   const databaseOk = Boolean(database) && databaseConfigured();
-  const ok = databaseOk && (schema?.ok ?? false);
+  const ok = databaseOk && (schema?.ok ?? false) && ollama.ok;
   let operations: { deadLetterJobs: number; failedWebhooks: number; degradedIntegrations: number } | null = null;
   if (database) {
     try {
@@ -80,7 +106,7 @@ export async function GET(request: Request) {
     service: "perpendicular-api",
     database: databaseOk ? "connected" : databaseConfigured() ? "unavailable" : "not_configured",
     schema,
-    model: process.env.DISABLE_OLLAMA === "true" ? "disabled" : "ollama",
+    model: ollama.ok ? `ollama:${ollama.model}` : `ollama:${ollama.model} · ${ollama.reason}`,
     version: process.env.PERPENDICULAR_BUILD_SHA || process.env.npm_package_version || "unknown",
     configuration: {
       ok: configurationGaps.length === 0,

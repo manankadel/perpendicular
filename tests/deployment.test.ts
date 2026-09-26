@@ -56,6 +56,8 @@ test("health reports provider configuration gaps without exposing secrets", () =
   assert.match(healthRoute, /gmailPush/);
   assert.match(healthRoute, /integrationEncryption/);
   assert.match(healthRoute, /configurationGaps/);
+  assert.match(healthRoute, /checkOllamaReadiness/);
+  assert.match(healthRoute, /ollama_model_missing/);
 });
 
 test("browser health polling is available to the configured web origins", () => {
