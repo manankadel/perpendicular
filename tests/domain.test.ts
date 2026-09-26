@@ -47,11 +47,23 @@ test("retrieval returns scoped documents that share query terms", () => {
   assert.deepEqual(matches.map((document) => document.id), ["doc-gtm"]);
 });
 
+test("retrieval ignores generic question words", () => {
+  const state = createInitialState();
+  assert.deepEqual(findRelevantDocuments(state.documents, "what is this platform"), []);
+});
+
 test("fallback replies disclose source context and next action", () => {
   const state = createInitialState();
   const result = buildFallbackReply(state.employees[0], "What should we do about a stalled pipeline lead?", state.documents);
   assert.match(result.content, /Next action:/);
   assert.ok(result.citations.length > 0);
+});
+
+test("fallback explains Perpendicular without borrowing another product identity", () => {
+  const state = createInitialState();
+  const result = buildFallbackReply(state.employees[0], "What is this platform?", state.documents);
+  assert.match(result.content, /Perpendicular is an open-source work system/);
+  assert.doesNotMatch(result.content, /Vibecoding|Parallel AI/i);
 });
 
 test("run scoring rewards evidence and ownership without exceeding the rubric", () => {

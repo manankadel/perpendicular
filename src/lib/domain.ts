@@ -981,7 +981,10 @@ export function createInitialState(companyId = "blueblood-demo"): WorkspaceState
 }
 
 export function findRelevantDocuments(documents: DocumentRecord[], query: string) {
-  const terms = query.toLowerCase().split(/[^a-z0-9]+/).filter((term) => term.length > 2);
+  const stopwords = new Set([
+    "about", "after", "again", "also", "and", "are", "can", "does", "for", "from", "has", "have", "how", "into", "is", "its", "more", "our", "that", "the", "their", "this", "what", "when", "where", "which", "who", "why", "with", "you", "your",
+  ]);
+  const terms = [...new Set(query.toLowerCase().split(/[^a-z0-9]+/).filter((term) => term.length > 2 && !stopwords.has(term)))];
   return [...documents]
     .map((document) => {
       const haystack = `${document.name} ${document.content}`.toLowerCase();
@@ -1009,6 +1012,13 @@ export function buildFallbackReply(employee: Employee, message: string, document
   const citations = relevant.length > 0 ? relevant.map((document) => document.name) : ["Employee system prompt"];
   const lower = message.toLowerCase();
   const context = relevant.length > 0 ? ` I grounded this in ${relevant.map((document) => `“${document.name}”`).join(" and ")}.` : " I did not find a matching workspace source, so treat this as a working hypothesis.";
+
+  if (/\b(?:what(?:'s| is)|tell me about)\s+(?:this\s+)?(?:platform|app|product)\b|\bwhat\s+is\s+perpendicular\b/i.test(lower)) {
+    return {
+      content: `Perpendicular is an open-source work system for turning company context into owned, reviewable work. It gives you local AI employees, a knowledge base, missions, content drafts, Smart Lists, controlled Gmail sequences, support inboxes, and a website operator. The Dell runs the durable API, Postgres, and Ollama model; the browser is the control surface.${context} Next action: open Missions and run the first owned item, then review the result before approving it.`,
+      citations,
+    };
+  }
 
   if (employee.department === "Growth" || /lead|pipeline|growth|market|sales|prospect/i.test(lower)) {
     return {
