@@ -69,6 +69,12 @@ function sessionCookie(token: string) {
   ].join("; ");
 }
 
+function productSessionCookie(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  const productJwt = (value as AuthPayload).productJwt;
+  return typeof productJwt === "string" && productJwt ? [sessionCookie(productJwt)] : [];
+}
+
 async function identityResponse(request: Request, upstream: Response, parsed: unknown, extraCookies: string[] = []) {
   const headers = new Headers({
     ...corsHeadersFor(request),
@@ -104,7 +110,7 @@ export async function proxyIdentityRequest(request: Request, path: string, allow
   } catch {
     parsed = { message: "Authentication service returned an invalid response." };
   }
-  return identityResponse(request, upstream, parsed);
+  return identityResponse(request, upstream, parsed, productSessionCookie(parsed));
 }
 
 export async function proxyIdentitySignupRequest(request: Request) {
@@ -136,8 +142,5 @@ export async function proxyIdentitySignupRequest(request: Request) {
   } catch {
     parsed = { message: "Authentication service returned an invalid response." };
   }
-  const productJwt = parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    ? (parsed as AuthPayload).productJwt
-    : null;
-  return identityResponse(request, upstream, parsed, typeof productJwt === "string" ? [sessionCookie(productJwt)] : []);
+  return identityResponse(request, upstream, parsed, productSessionCookie(parsed));
 }
