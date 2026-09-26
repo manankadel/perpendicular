@@ -14,6 +14,11 @@ const transientStates = new Map<string, WorkspaceState>();
 
 function needsWorkspaceMigration(state: WorkspaceState) {
   const candidate = state as Partial<WorkspaceState>;
+  const needsEmployeeScoreMigration = Array.isArray(candidate.employees) && candidate.employees.some((employee) => {
+    const trend = Array.isArray(employee.scoreTrend) ? employee.scoreTrend : [];
+    const lastPositive = [...trend].reverse().find((value) => Number.isFinite(value) && value > 0);
+    return trend[0] === 0 && lastPositive !== undefined && employee.score !== lastPositive;
+  });
   const onboarding = candidate.workspace?.onboarding;
   const needsStarterSequence = Array.isArray(candidate.sequences)
     && candidate.sequences.length === 0
@@ -22,7 +27,8 @@ function needsWorkspaceMigration(state: WorkspaceState) {
     && Array.isArray(candidate.documents)
     && candidate.documents.length > 0
     && Boolean(onboarding?.discoveredAt);
-  return !candidate.profile
+  return needsEmployeeScoreMigration
+    || !candidate.profile
     || !Array.isArray(candidate.missions)
     || !Array.isArray(candidate.content)
     || !Array.isArray(candidate.playbooks)

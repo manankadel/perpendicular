@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildFallbackReply, buildOnboardingArtifacts, createInitialState, findRelevantDocuments, normalizeWorkspaceState, scoreRun, ticketSlaMinutes, type WorkspaceState } from "../src/lib/domain";
+import { buildFallbackReply, buildOnboardingArtifacts, createInitialState, findRelevantDocuments, normalizeWorkspaceState, recordEmployeeScore, scoreRun, ticketSlaMinutes, type WorkspaceState } from "../src/lib/domain";
 
 test("seed workspace has the core employee -> knowledge -> run loop", () => {
   const state = createInitialState();
@@ -70,6 +70,25 @@ test("run scoring rewards evidence and ownership without exceeding the rubric", 
   const score = scoreRun("Write a prioritized pipeline report", "Evidence says Meridian is stalled. Next action: Manan owns the rescue.");
   assert.ok(score >= 80);
   assert.ok(score <= 98);
+});
+
+test("the first employee run adopts its real score instead of averaging against zero", () => {
+  const employee = { score: 0, scoreTrend: [0] };
+  recordEmployeeScore(employee, 80);
+  assert.equal(employee.score, 80);
+  assert.deepEqual(employee.scoreTrend, [80]);
+  recordEmployeeScore(employee, 90);
+  assert.equal(employee.score, 84);
+  assert.deepEqual(employee.scoreTrend, [80, 90]);
+});
+
+test("legacy first-run score state is normalized to the persisted run score", () => {
+  const state = createInitialState("legacy-score");
+  state.employees[0].score = 28;
+  state.employees[0].scoreTrend = [0, 80];
+  const normalized = normalizeWorkspaceState(state, "legacy-score");
+  assert.equal(normalized.employees[0].score, 80);
+  assert.deepEqual(normalized.employees[0].scoreTrend, [80]);
 });
 
 test("onboarding builds a source, an operator pod, and executable work", () => {

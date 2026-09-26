@@ -5,6 +5,7 @@ import {
   createId,
   createOnboardingState,
   scoreRun,
+  recordEmployeeScore,
   timestamp,
   ticketSlaMinutes,
   type OnboardingDiscovery,
@@ -105,8 +106,7 @@ function makeRun(state: WorkspaceState, employee: Employee, task: string, trigge
   state.runs.unshift(run);
   state.runs = state.runs.slice(0, 30);
   state.workspace.aiCredits.remaining = Math.max(0, state.workspace.aiCredits.remaining - 2);
-  employee.score = Math.round((employee.score * 0.65) + (score * 0.35));
-  employee.scoreTrend = [...employee.scoreTrend.slice(-6), score];
+  recordEmployeeScore(employee, score);
   employee.lastRunAt = run.createdAt;
   return run;
 }

@@ -390,7 +390,14 @@ export function createOnboardingState(status: OnboardingState["status"] = "not_s
 export function normalizeWorkspaceState(state: WorkspaceState, companyId: string) {
   const timestamp = now();
   const legacy = state as Partial<WorkspaceState>;
-  const employees = Array.isArray(legacy.employees) ? legacy.employees : [];
+  const employees = (Array.isArray(legacy.employees) ? legacy.employees : []).map((employee) => {
+    const scoreTrend = Array.isArray(employee.scoreTrend) ? employee.scoreTrend : [];
+    const positiveScores = scoreTrend.filter((value) => Number.isFinite(value) && value > 0);
+    if (scoreTrend[0] === 0 && positiveScores.length > 0) {
+      return { ...employee, score: positiveScores[positiveScores.length - 1], scoreTrend: positiveScores };
+    }
+    return employee;
+  });
   const documents = Array.isArray(legacy.documents) ? legacy.documents : [];
   const onboarding = {
     ...createOnboardingState(employees.length ? "completed" : "not_started"),
@@ -1013,6 +1020,13 @@ export function scoreRun(task: string, output: string) {
   if (/\d/.test(output)) score += 3;
   if (task.length > 45) score += 2;
   return Math.min(98, score);
+}
+
+export function recordEmployeeScore(employee: Pick<Employee, "score" | "scoreTrend">, score: number) {
+  const boundedScore = Math.min(100, Math.max(0, Math.round(score)));
+  const hasHistory = employee.score > 0 || employee.scoreTrend.some((value) => value > 0);
+  employee.score = hasHistory ? Math.round((employee.score * 0.65) + (boundedScore * 0.35)) : boundedScore;
+  employee.scoreTrend = [...employee.scoreTrend.filter((value) => value > 0).slice(-6), boundedScore];
 }
 
 export function buildFallbackReply(employee: Employee, message: string, documents: DocumentRecord[]) {
