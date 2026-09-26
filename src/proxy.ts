@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 export function proxy(request: NextRequest) {
   const host = request.nextUrl.hostname.toLowerCase();
   const canonicalOrigin = process.env.NEXT_PUBLIC_CANONICAL_URL;
-  if (!host?.endsWith(".vercel.app") || !canonicalOrigin) return NextResponse.next();
+  if (host !== "perpendicular-nine.vercel.app" || !canonicalOrigin) return NextResponse.next();
 
   const destination = new URL(canonicalOrigin);
   if (destination.host === host) return NextResponse.next();
