@@ -27,6 +27,14 @@ function needsWorkspaceMigration(state: WorkspaceState) {
     && Array.isArray(candidate.documents)
     && candidate.documents.length > 0
     && Boolean(onboarding?.discoveredAt);
+  const needsLaunchSurfaces = Boolean(onboarding?.discoveredAt)
+    && Array.isArray(candidate.employees)
+    && candidate.employees.length > 0
+    && Array.isArray(candidate.documents)
+    && candidate.documents.length > 0
+    && ((!Array.isArray(candidate.lists) || candidate.lists.length === 0)
+      || (!Array.isArray(candidate.inboundAgents) || candidate.inboundAgents.length === 0)
+      || (!Array.isArray(candidate.sites) || candidate.sites.length === 0));
   return needsEmployeeScoreMigration
     || !candidate.profile
     || !Array.isArray(candidate.missions)
@@ -44,7 +52,8 @@ function needsWorkspaceMigration(state: WorkspaceState) {
     || !Array.isArray(state.workspace.onboarding?.employeeIds)
     || !Array.isArray(state.workspace.onboarding?.missionIds)
     || !Array.isArray(state.workspace.onboarding?.contentIds)
-    || needsStarterSequence;
+    || needsStarterSequence
+    || needsLaunchSurfaces;
 }
 
 async function getPool() {

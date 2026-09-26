@@ -6,6 +6,7 @@ import { hasPermission, identityOrResponse, rateLimitHeaders, rejectCrossOrigin 
 import { getWorkspace, updateWorkspace } from "@/lib/server-store";
 import { recordUsage } from "@/lib/usage";
 import { workspaceStateForClient } from "@/lib/workspace-view";
+import { executeWorkspaceApp } from "@/lib/app-runtime";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -14,6 +15,7 @@ const tools = [
   { name: "workspace_get", description: "Read the authenticated workspace state.", inputSchema: { type: "object", properties: {} } },
   { name: "employee_chat", description: "Ask a named employee and persist the conversation.", inputSchema: { type: "object", required: ["employeeId", "message"], properties: { employeeId: { type: "string" }, message: { type: "string" } } } },
   { name: "employee_run", description: "Run a task through an employee and persist the scored run.", inputSchema: { type: "object", required: ["employeeId", "task"], properties: { employeeId: { type: "string" }, task: { type: "string" } } } },
+  { name: "app_run", description: "Run an active workspace app with operator input and persist the scored result.", inputSchema: { type: "object", required: ["appId"], properties: { appId: { type: "string" }, input: { type: "string" } } } },
   { name: "mission_run", description: "Run a persisted mission through its assigned employee and leave the result waiting for review.", inputSchema: { type: "object", required: ["missionId"], properties: { missionId: { type: "string" } } } },
   { name: "mission_approve", description: "Approve a mission result and mark it completed.", inputSchema: { type: "object", required: ["missionId"], properties: { missionId: { type: "string" } } } },
   { name: "content_generate", description: "Generate a grounded content draft and leave it waiting for review.", inputSchema: { type: "object", required: ["contentId"], properties: { contentId: { type: "string" } } } },
@@ -71,6 +73,14 @@ export async function POST(request: Request) {
     if (name === "integrations_list") {
       if (!hasPermission(identity.context, "workspace:read")) throw new Error("Permission denied.");
       return respond({ jsonrpc: "2.0", id, result: result(await listIntegrationSummaries(identity.context.workspaceId)) });
+    }
+    if (name === "app_run") {
+      if (!hasPermission(identity.context, "workspace:write")) throw new Error("Permission denied.");
+      const appId = String(args.appId || "");
+      const execution = await executeWorkspaceApp({ workspaceId: identity.context.workspaceId, appId, input: String(args.input || ""), source: "mcp" });
+      try { await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.app_run", resourceType: "app", resourceId: appId, metadata: { runId: execution.run.id } }); } catch { if (process.env.NODE_ENV === "production") return persistedFailure(id, execution.state, "The app run was saved, but its audit record could not be stored."); }
+      try { await recordUsage({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, feature: "app_run", unit: "ai", units: 2, provider: execution.result.provider }); } catch { if (process.env.NODE_ENV === "production") return persistedFailure(id, execution.state, "The app run was saved, but its usage record could not be stored."); }
+      return respond({ jsonrpc: "2.0", id, result: result({ output: execution.run.output, provider: execution.result.provider, app: execution.app, run: execution.run, state: workspaceStateForClient(execution.state) }) });
     }
     if (name === "mission_run") {
       if (!hasPermission(identity.context, "workspace:write")) throw new Error("Permission denied.");

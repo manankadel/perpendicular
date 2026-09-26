@@ -332,7 +332,13 @@ export type AppRecord = {
   description: string;
   type: "workflow" | "api" | "mcp";
   employeeId: string | null;
+  task: string;
   status: "draft" | "active";
+  lastRunAt: string | null;
+  lastRunId: string | null;
+  lastOutput: string | null;
+  lastError: string | null;
+  runCount: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -615,6 +621,50 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
       deterministic: true,
     })];
   }
+  const launchSurfaceReady = Boolean(onboarding.discoveredAt && employees.length && documents.length);
+  const primaryEmployee = employees.find((employee) => employee.id === onboarding.employeeId) || employees[0];
+  const launchId = companyId.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 72) || "workspace";
+  const launchLists = [...lists];
+  const launchAgents = Array.isArray(state.inboundAgents) ? [...state.inboundAgents] : [];
+  const launchSites = Array.isArray(state.sites) ? [...state.sites] : [];
+  if (launchSurfaceReady && launchLists.length === 0) {
+    launchLists.push({
+      id: `list-onboarding-${launchId}`,
+      name: `${state.workspace.name || companyId} ideal customers`,
+      description: "Import real contacts or connect a research source. Perpendicular will not invent leads or claim an email is verified without provider evidence.",
+      updatedAt: timestamp,
+      rows: [],
+      actions: [],
+    });
+  }
+  if (launchSurfaceReady && launchAgents.length === 0 && primaryEmployee) {
+    launchAgents.push({
+      id: `agent-onboarding-${launchId}`,
+      name: `${state.workspace.name || companyId} website operator`,
+      description: "Answer public visitors with the discovered workspace context and route every response through the selected employee.",
+      employeeId: primaryEmployee.id,
+      channel: "website",
+      greeting: `Hi — I’m ${primaryEmployee.name}. Ask about ${state.workspace.name || companyId}, the work we do, or the next step you are considering.`,
+      status: "live",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+  }
+  if (launchSurfaceReady && launchSites.length === 0 && primaryEmployee && launchAgents[0]) {
+    const slug = `${state.workspace.name || companyId}-${launchId}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 90) || `workspace-${launchId}`;
+    launchSites.push({
+      id: `site-onboarding-${launchId}`,
+      name: `${state.workspace.name || companyId} public operator`,
+      kind: "website",
+      slug,
+      agentId: launchAgents[0].id,
+      status: "published",
+      headline: `${state.workspace.name || companyId}, with a useful next step.`,
+      body: `${state.profile?.description || documents[0]?.content.slice(0, 800) || "A grounded workspace operator."}\n\nThis public page is grounded in the company source discovered during setup. Ask a question to speak with the workspace operator.`,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+  }
   return {
     ...state,
     profile: state.profile || {
@@ -643,7 +693,7 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
     missions,
     content,
     playbooks: Array.isArray(state.playbooks) ? state.playbooks : defaultPlaybooks(),
-    lists,
+    lists: launchLists,
     sequences,
     schedules: Array.isArray(state.schedules) ? state.schedules.map((schedule) => ({
       ...schedule,
@@ -656,9 +706,17 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
     leadSources: Array.isArray(state.leadSources) ? state.leadSources : [],
     campaigns: Array.isArray(state.campaigns) ? state.campaigns : [],
     keywordMonitors: Array.isArray(state.keywordMonitors) ? state.keywordMonitors : [],
-    inboundAgents: Array.isArray(state.inboundAgents) ? state.inboundAgents : [],
-    sites: Array.isArray(state.sites) ? state.sites : [],
-    apps: Array.isArray(state.apps) ? state.apps : [],
+    inboundAgents: launchAgents,
+    sites: launchSites,
+    apps: Array.isArray(state.apps) ? state.apps.map((app) => ({
+      ...app,
+      task: typeof app.task === "string" && app.task.trim() ? app.task : app.description,
+      lastRunAt: app.lastRunAt ?? null,
+      lastRunId: app.lastRunId ?? null,
+      lastOutput: app.lastOutput ?? null,
+      lastError: app.lastError ?? null,
+      runCount: Number.isFinite(app.runCount) ? app.runCount : 0,
+    })) : [],
     tickets: Array.isArray(state.tickets) ? state.tickets : [],
     activity: Array.isArray(state.activity) ? state.activity : [],
     suppressedEmails: Array.isArray(state.suppressedEmails) ? state.suppressedEmails.map((email) => email.toLowerCase()) : [],
@@ -1491,6 +1549,38 @@ export function buildOnboardingArtifacts(args: {
       { id: createId("step"), channel: "Email", title: "Final nudge", delay: "Day 10", subject: "Should I close the loop?", body: "A final, respectful check-in. Stop the sequence if the contact replies or asks not to be contacted." },
     ],
   };
+  const list: SmartList = {
+    id: createId("list"),
+    name: `${args.companyName} ideal customers`,
+    description: "Import real contacts or connect a research source. Perpendicular will not invent leads or claim an email is verified without provider evidence.",
+    updatedAt: createdAt,
+    rows: [],
+    actions: [],
+  };
+  const inboundAgent: InboundAgent = {
+    id: createId("agent"),
+    name: `${args.companyName} website operator`,
+    description: "Answer public visitors with the discovered workspace context and route every response through the selected employee.",
+    employeeId: primary.id,
+    channel: "website",
+    greeting: `Hi — I’m ${primary.name}. Ask about ${args.companyName}, the work we do, or the next step you are considering.`,
+    status: "live",
+    createdAt,
+    updatedAt: createdAt,
+  };
+  const siteSlug = `${args.companyName}-${args.companyId}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 90) || createId("site");
+  const site: SiteRecord = {
+    id: createId("site"),
+    name: `${args.companyName} public operator`,
+    kind: "website",
+    slug: siteSlug,
+    agentId: inboundAgent.id,
+    status: "published",
+    headline: `${args.companyName}, with a useful next step.`,
+    body: `${sourceDescription}\n\nThis public page is grounded in the company source discovered during setup. Ask a question to speak with the workspace operator.`,
+    createdAt,
+    updatedAt: createdAt,
+  };
   const profile: WorkspaceProfile = {
     industry: "To be confirmed from company context",
     website: args.discovery.url,
@@ -1508,6 +1598,9 @@ export function buildOnboardingArtifacts(args: {
     missions,
     content,
     sequence,
+    list,
+    inboundAgent,
+    site,
     profile,
     playbooks: defaultPlaybooks(),
     task: goalDetails.task,

@@ -43,6 +43,7 @@ import { normalizeDomain, normalizeEmail, outboundSafetyDecision, startOfLocalDa
 import { parseLeadCsv, type LeadCsvError } from "@/lib/lead-csv";
 import { scoreLead } from "@/lib/lead-scoring";
 import { nextAllowedScheduleAt, nextScheduleAt, scheduleExecutionTask } from "@/lib/scheduling";
+import { executeWorkspaceApp } from "@/lib/app-runtime";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -255,6 +256,9 @@ async function postWorkspace(request: Request): Promise<Response> {
         state.missions.unshift(...artifacts.missions);
         state.content.unshift(...artifacts.content);
         state.sequences.unshift(artifacts.sequence);
+        state.lists.unshift(artifacts.list);
+        state.inboundAgents.unshift(artifacts.inboundAgent);
+        state.sites.unshift(artifacts.site);
         state.playbooks = state.playbooks.length ? state.playbooks : artifacts.playbooks;
         state.workspace.onboarding = {
           ...createOnboardingState("ready"),
@@ -269,7 +273,7 @@ async function postWorkspace(request: Request): Promise<Response> {
           missionIds: artifacts.missions.map((mission) => mission.id),
           contentIds: artifacts.content.map((item) => item.id),
         };
-        addActivity(state, { type: "system", title: `${companyName} was discovered`, detail: `${artifacts.document.name} indexed · ${artifacts.employees.length} operators, ${artifacts.missions.length} missions, and a draft sequence are ready`, });
+        addActivity(state, { type: "system", title: `${companyName} was discovered`, detail: `${artifacts.document.name} indexed · ${artifacts.employees.length} operators, ${artifacts.missions.length} missions, a lead workspace, and a live public operator are ready`, });
         return state;
       });
       try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.bootstrap", metadata: { goal, source: discovery.url ? "public_url" : "operator_brief" } }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The workspace was created, but its audit record could not be stored." }, { status: 503 }); }
@@ -466,6 +470,15 @@ async function postWorkspace(request: Request): Promise<Response> {
       });
       try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "widget.configured", metadata: { enabled, employeeId } }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The widget was saved, but its audit record could not be stored." }, { status: 503 }); }
       return json({ state: workspaceStateForClient(next), widget: { key, enabled, employeeId: next.widget.employeeId, greeting: next.widget.greeting } });
+    }
+
+    if (action === "run-app") {
+      const appId = String(body.appId || "").trim();
+      if (!appId) return json({ error: "App is required." }, { status: 400 });
+      const execution = await executeWorkspaceApp({ workspaceId: companyId, appId, input: String(body.input || ""), source: "ui" });
+      try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.app_run", resourceType: "app", resourceId: appId, metadata: { runId: execution.run.id } }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(execution.state), persisted: true, error: "The app run was saved, but its audit record could not be stored." }, { status: 503 }); }
+      try { await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "app_run", unit: "ai", units: 2, provider: execution.result.provider }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(execution.state), persisted: true, error: "The app run was saved, but its usage record could not be stored." }, { status: 503 }); }
+      return json({ state: workspaceStateForClient(execution.state), appId, runId: execution.run.id, output: execution.run.output, provider: execution.result.provider }, { headers: rateLimitHeaders(identity.context) });
     }
 
     if (action === "run-mission" || action === "generate-content") {
@@ -1266,7 +1279,9 @@ async function postWorkspace(request: Request): Promise<Response> {
         case "create-app": {
           const name = String(body.name || "").trim();
           if (!name) throw new Error("App name is required.");
-          const app: AppRecord = { id: createId("app"), name, description: String(body.description || "").trim() || "A workspace-native workflow.", type: (["workflow", "api", "mcp"] as const).includes(body.type as never) ? body.type as AppRecord["type"] : "workflow", employeeId: String(body.employeeId || "").trim() || null, status: "draft", createdAt: timestamp(), updatedAt: timestamp() };
+          const description = String(body.description || "").trim() || "A workspace-native workflow.";
+          const task = String(body.task || "").trim() || description;
+          const app: AppRecord = { id: createId("app"), name, description, type: (["workflow", "api", "mcp"] as const).includes(body.type as never) ? body.type as AppRecord["type"] : "workflow", employeeId: String(body.employeeId || "").trim() || null, task, status: "draft", lastRunAt: null, lastRunId: null, lastOutput: null, lastError: null, runCount: 0, createdAt: timestamp(), updatedAt: timestamp() };
           if (app.employeeId && !findEmployee(state, app.employeeId)) throw new Error("Assigned employee not found.");
           state.apps.unshift(app);
           addActivity(state, { type: "system", title: `${name} was added to Apps`, detail: `${app.type} · draft` });

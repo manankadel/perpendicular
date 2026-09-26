@@ -28,6 +28,8 @@ This is the implementation truth for the supplied product and audit documents. A
 | Public keyword monitoring from the self-hosted Dell | Live at launch scope | `researchPublicKeyword`, `create-keyword-monitor`, `check-keyword`, Keywords view |
 | Inbound agent records, published site/landing-page routes, and public site chat | Live at launch scope | `create-inbound-agent`, `create-site`, `/site/[slug]`, `/api/site/[slug]/chat` |
 | Workspace Apps definitions with explicit activation state | Live at launch scope | `create-app`, `toggle-app`, Apps view |
+| Workspace Apps execute a saved task through a local employee | Live at launch scope | `run-app`, `/api/apps/{appId}/run`, MCP `app_run`, persisted output/score/trace, Apps view |
+| Onboarding creates a ready lead workspace and grounded public operator page | Live at launch scope | `buildOnboardingArtifacts`, additive legacy migration, `/site/{slug}` and `/api/site/{slug}/chat` |
 | Gmail OAuth, encrypted refresh tokens, sync, watch renewal, webhook dedupe | Implemented; provider E2E pending | Gmail routes and integration health tables |
 | Persisted Gmail inbox message read surface | Live in code; provider E2E pending | `/api/inbox`, Inbox view, `inbox-store.ts` |
 | Capability-keyed inbound website widget with persisted visitor conversations | Live in code; deployed provider/model evidence pending | `/widget/{workspaceId}`, `/api/widget/{workspaceId}/chat`, Inbox → Website conversations |

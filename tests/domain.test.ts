@@ -114,6 +114,10 @@ test("onboarding builds a source, an operator pod, and executable work", () => {
   assert.equal(result.content.length, 1);
   assert.equal(result.sequence.status, "draft");
   assert.equal(result.sequence.steps.length, 5);
+  assert.equal(result.list.rows.length, 0);
+  assert.equal(result.inboundAgent.status, "live");
+  assert.equal(result.site.status, "published");
+  assert.equal(result.site.agentId, result.inboundAgent.id);
   assert.ok(result.sequence.steps.every((step) => step.channel === "Email" || step.channel === "Task"));
   assert.ok(result.employees.every((employee) => employee.tools && employee.tools.length > 0));
   assert.ok(result.missions.every((mission) => mission.sourceDocumentIds.includes(result.document.id)));
@@ -142,6 +146,8 @@ test("legacy workspaces receive the product-native collection defaults", () => {
   delete (legacy as Partial<WorkspaceState>).inboundAgents;
   delete (legacy as Partial<WorkspaceState>).sites;
   delete (legacy as Partial<WorkspaceState>).apps;
+  legacy.workspace.onboarding.discoveredAt = null;
+  legacy.workspace.onboarding.status = "not_started";
   const migrated = normalizeWorkspaceState(legacy, "legacy-native");
   assert.deepEqual(migrated.members, []);
   assert.deepEqual(migrated.schedules, []);
@@ -178,6 +184,21 @@ test("discovered workspaces receive a deterministic starter sequence during migr
   assert.equal(migrated.sequences[0].id, "seq-onboarding-discovered-company");
   assert.equal(migrated.sequences[0].steps.length, 5);
   assert.equal(migrated.sequences[0].status, "draft");
+});
+
+test("discovered workspaces receive additive lead and inbound launch surfaces", () => {
+  const state = createInitialState("discovered-surfaces");
+  state.workspace.onboarding.discoveredAt = new Date().toISOString();
+  state.workspace.onboarding.employeeId = state.employees[0]?.id || null;
+  state.documents = state.documents.slice(0, 1);
+  state.lists = [];
+  state.inboundAgents = [];
+  state.sites = [];
+  const migrated = normalizeWorkspaceState(state, "discovered-surfaces");
+  assert.equal(migrated.lists.length, 1);
+  assert.equal(migrated.inboundAgents[0]?.status, "live");
+  assert.equal(migrated.sites[0]?.status, "published");
+  assert.equal(migrated.sites[0]?.agentId, migrated.inboundAgents[0]?.id);
 });
 
 test("ticket SLA windows follow the operational priority contract", () => {
