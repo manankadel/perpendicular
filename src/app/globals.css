@@ -147,6 +147,9 @@ button:disabled { cursor: wait; opacity: .52; }
 .crumbs strong { color: var(--text); font-weight: 600; }
 .slash { color: var(--text-dim); }
 .top-actions { display: flex; align-items: center; gap: 10px; }
+.action-status { display: inline-flex; align-items: center; gap: 7px; color: var(--signal); font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: capitalize; white-space: nowrap; }
+.action-spinner { width: 8px; height: 8px; border: 1px solid rgba(242,167,102,.35); border-top-color: var(--signal); border-radius: 50%; animation: action-spin 800ms linear infinite; }
+@keyframes action-spin { to { transform: rotate(360deg); } }
 .server-status { display: flex; align-items: center; gap: 7px; color: var(--text-muted); font-size: 11px; }
 .command-button { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line-bright); border-radius: 6px; padding: 8px 11px; color: var(--text); background: var(--surface-raised); font-size: 11px; font-weight: 600; transition: border-color 180ms ease, background 180ms ease; }
 .command-button:hover { border-color: var(--signal); background: var(--surface-soft); }
