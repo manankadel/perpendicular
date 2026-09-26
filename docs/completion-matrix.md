@@ -29,7 +29,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Workspace JSON/CSV export and owner-confirmed deletion | Implemented; destructive E2E pending | `/api/workspace/export`, `/api/workspace/privacy` |
 | Webhook catalog and dead-letter replay controls | Implemented; provider E2E pending | `/api/ops`, Settings → Operations |
 | Operational health counts for dead letters, failed webhooks, and degraded integrations | Live and deployed | `/api/health`, required schema includes outbound send records |
-| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:52258cd2…`, build `e748b9a`, eight checks, 2026-09-26 |
+| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:32329258…`, build `2a3e6ba`, eight checks, 2026-09-26 |
 | Dell heartbeat trigger | Live and verified on the host | Root-owned `/usr/local/sbin/perpendicular-heartbeat`, `flock` lock, API-origin request, and successful authenticated tick on 2026-09-26 |
 | CI verification before image publication | Live | `.github/workflows/perpendicular-image.yml` runs check and production audit before publish |
 
@@ -73,7 +73,7 @@ None of these are replaced with sample data or a green UI state.
 
 Read-only checks on 2026-09-26 found:
 
-- The live API is healthy on promoted immutable image `e748b9a` (`sha256:52258cd2da7e2dd4abb90ace4f1dd9b179ebaf152c1b0e4ac21c4a616098d151`); the production smoke suite passed all eight checks, including the public widget entry route.
+- The live API is healthy on promoted immutable image `2a3e6ba` (`sha256:323292589df40596ab90c6041f40326557f32732e69453eac59b83ae841d91c8`); the production smoke suite passed all eight checks, including the public widget entry route.
 - The onboarding proof now attaches the scored first run to the first real mission, so opening the workbench produces a reviewable mission instead of an empty queue.
 - The Dell host heartbeat is installed as a root-owned helper with a non-overlap lock and calls `https://perpendicular-api.bluebloodstudio.com/api/cron/heartbeat`; an authenticated tick returned successfully.
 - Dell reports all required workspace, platform, Gmail event/health, usage-ledger, and outbound-message tables present; schema health has no missing tables.
