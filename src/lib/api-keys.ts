@@ -1,6 +1,6 @@
 import { query } from "@/lib/database";
 import { randomToken, sha256 } from "@/lib/security";
-import { consumeApiKeyRateLimit, type RateLimitDecision } from "@/lib/rate-limit";
+import { consumeApiKeyRateLimitPersistent, type RateLimitDecision } from "@/lib/rate-limit";
 
 export type ApiKeyRecord = {
   id: string;
@@ -83,7 +83,7 @@ export async function authenticateApiKey(secret: string) {
   );
   const row = result.rows[0];
   if (!row) return null;
-  const decision = consumeApiKeyRateLimit(sha256(secret), row.workspace_id);
+  const decision = await consumeApiKeyRateLimitPersistent(sha256(secret), row.workspace_id);
   if (!decision.allowed) throw new ApiKeyRateLimitError(decision);
   await query("update perpendicular_api_keys set last_used_at = now() where id = $1", [row.id]);
   return { id: row.id, workspaceId: row.workspace_id, scopes: row.scopes || [], rateLimit: decision };

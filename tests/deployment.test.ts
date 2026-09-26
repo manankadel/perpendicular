@@ -56,6 +56,11 @@ test("health reports provider configuration gaps without exposing secrets", () =
   assert.match(healthRoute, /configurationGaps/);
 });
 
+test("health exposes backup readiness without treating an absent remote as a secret", () => {
+  assert.match(healthRoute, /backupOffsiteConfigured/);
+  assert.match(healthRoute, /offsite_backup_remote/);
+});
+
 test("database connections retry after a transient outage", () => {
   assert.match(database, /unavailableUntil/);
   assert.match(database, /databaseRetryBackoffMs/);

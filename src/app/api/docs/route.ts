@@ -21,7 +21,7 @@ const document = {
     },
   },
   paths: {
-    "/api/health": { get: { security: [], responses: { "200": { description: "Service, database/schema, operations, and non-secret provider configuration health." }, "503": { description: "Production database or required schema is unavailable." } } } },
+    "/api/health": { get: { security: [], responses: { "200": { description: "Service, database/schema, operations, non-secret provider configuration, and backup readiness health. A missing offsite backup remote is exposed as a warning." }, "503": { description: "Production database or required schema is unavailable." } } } },
     "/api/auth/login": { post: { security: [], description: "Authenticate through the product-owned sign-in form. The server validates the credentials with Blueblood ID and forwards HttpOnly session cookies; identity tokens are never returned to browser JavaScript.", responses: { "200": { description: "Signed in or an MFA challenge was issued." }, "401": { description: "Credentials are invalid." } } } },
     "/api/auth/mfa": { post: { security: [], description: "Complete the MFA challenge created by the product-owned sign-in form.", responses: { "200": { description: "Signed in and session cookies issued." }, "401": { description: "The challenge or code is invalid." } } } },
     "/api/auth/google/start": { get: { security: [], description: "Start Google sign-in through Blueblood ID OAuth while keeping the Perpendicular login surface product-owned. The next path is restricted to a same-site relative path.", parameters: [{ name: "next", in: "query", schema: { type: "string" } }], responses: { "302": { description: "Redirect to Google consent through the identity authority." } } } },

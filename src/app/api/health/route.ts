@@ -17,6 +17,7 @@ const requiredTables = [
   "perpendicular_integration_health",
   "perpendicular_usage_ledger",
   "perpendicular_outbound_messages",
+  "perpendicular_rate_limits",
 ] as const;
 
 export async function GET() {
@@ -28,6 +29,7 @@ export async function GET() {
   );
   const gmailPushConfigured = Boolean(!process.env.GMAIL_PUBSUB_TOPIC || process.env.GMAIL_WEBHOOK_SECRET);
   const integrationEncryptionConfigured = Boolean(process.env.INTEGRATION_ENCRYPTION_KEY);
+  const backupOffsiteConfigured = Boolean(process.env.PERPENDICULAR_BACKUP_REMOTE);
   const configurationGaps = [
     !gmailOAuthConfigured ? "gmail_oauth" : null,
     !gmailPushConfigured ? "gmail_webhook_secret" : null,
@@ -78,9 +80,11 @@ export async function GET() {
     configuration: {
       ok: configurationGaps.length === 0,
       gaps: configurationGaps,
+      warnings: backupOffsiteConfigured ? [] : ["offsite_backup_remote"],
       gmailOAuth: gmailOAuthConfigured,
       gmailPush: gmailPushConfigured,
       integrationEncryption: integrationEncryptionConfigured,
+      backupOffsiteConfigured,
     },
     operations,
   }, { status: production && !ok ? 503 : 200 });

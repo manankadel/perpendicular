@@ -12,6 +12,14 @@ test("the launch database contract includes additive usage accounting", () => {
   assert.match(readFileSync(join(root, "README.md"), "utf8"), /db\/004_usage_ledger\.sql/);
 });
 
+test("the launch database contract includes distributed API-key rate limiting", () => {
+  const migration = readFileSync(join(root, "db/006_rate_limits.sql"), "utf8");
+  const health = readFileSync(join(root, "src/app/api/health/route.ts"), "utf8");
+  assert.match(migration, /create table if not exists perpendicular_rate_limits/);
+  assert.match(migration, /bucket_key text primary key/);
+  assert.match(health, /perpendicular_rate_limits/);
+});
+
 test("the launch database contract persists idempotent outbound sequence sends", () => {
   const migration = readFileSync(join(root, "db/005_outbound_messages.sql"), "utf8");
   const health = readFileSync(join(root, "src/app/api/health/route.ts"), "utf8");

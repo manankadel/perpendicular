@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { consumeApiKeyRateLimit, resetRateLimiterForTests } from "../src/lib/rate-limit";
 
 test("API key limits apply to both the key and its workspace", () => {
@@ -18,4 +20,14 @@ test("API key limits apply to both the key and its workspace", () => {
   resetRateLimiterForTests();
   if (previous === undefined) delete process.env.API_KEY_RATE_LIMIT_PER_MINUTE;
   else process.env.API_KEY_RATE_LIMIT_PER_MINUTE = previous;
+});
+
+test("the production limiter has a durable Postgres migration and keeps an outage fallback", () => {
+  const migration = readFileSync(join(process.cwd(), "db/006_rate_limits.sql"), "utf8");
+  const implementation = readFileSync(join(process.cwd(), "src/lib/rate-limit.ts"), "utf8");
+  assert.match(migration, /perpendicular_rate_limits/);
+  assert.match(migration, /bucket_key text primary key/);
+  assert.match(implementation, /consumeApiKeyRateLimitPersistent/);
+  assert.match(implementation, /transaction/);
+  assert.match(implementation, /consumeApiKeyRateLimit\(/);
 });

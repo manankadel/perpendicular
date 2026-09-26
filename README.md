@@ -31,11 +31,11 @@ ALLOW_UNAUTHENTICATED_LOCAL=true ALLOW_LOCAL_LLM_FALLBACK=true npm run dev
 ```
 Local development can use the JSON state fallback. Production cannot: `DATABASE_URL`, `BLUEBLOOD_ID_*`, `INTEGRATION_ENCRYPTION_KEY`, and `CRON_SECRET` are required on the Dell. Ollama is required for production employee runs; the app fails clearly if it is unavailable.
 
-For a fully self-hosted local runtime, `docker compose up --build` starts Postgres, Redis, Qdrant, n8n, and the Perpendicular API. Apply the five SQL files once with `docker compose exec -T postgres psql -U perpendicular -d perpendicular < db/001_workspace_state.sql` (repeat for `db/002_platform.sql`, `db/003_gmail_events_health.sql`, `db/004_usage_ledger.sql`, and `db/005_outbound_messages.sql`). The Dell deployment does not use this development compose file; it pulls the immutable API image through `deploy/dell/perpendicular.image.compose.yml`.
+For a fully self-hosted local runtime, `docker compose up --build` starts Postgres, Redis, Qdrant, n8n, and the Perpendicular API. Apply the six SQL files once with `docker compose exec -T postgres psql -U perpendicular -d perpendicular < db/001_workspace_state.sql` (repeat for `db/002_platform.sql`, `db/003_gmail_events_health.sql`, `db/004_usage_ledger.sql`, `db/005_outbound_messages.sql`, and `db/006_rate_limits.sql`). The Dell deployment does not use this development compose file; it pulls the immutable API image through `deploy/dell/perpendicular.image.compose.yml`.
 
 ## Database
 
-Apply `db/001_workspace_state.sql`, `db/002_platform.sql`, `db/003_gmail_events_health.sql`, `db/004_usage_ledger.sql`, and `db/005_outbound_messages.sql` to the dedicated `perpendicular` Postgres database. Do not use the shared Blueblood ID database for product state. The migrations contain workspace, integration, OAuth-state, API-key, audit, durable job, inbox, webhook-event, integration-health, usage-ledger, and idempotent outbound-message tables.
+Apply `db/001_workspace_state.sql`, `db/002_platform.sql`, `db/003_gmail_events_health.sql`, `db/004_usage_ledger.sql`, `db/005_outbound_messages.sql`, and `db/006_rate_limits.sql` to the dedicated `perpendicular` Postgres database. Do not use the shared Blueblood ID database for product state. The migrations contain workspace, integration, OAuth-state, API-key, audit, durable job, inbox, webhook-event, integration-health, usage-ledger, idempotent outbound-message, and distributed rate-limit tables.
 
 ## Verify
 

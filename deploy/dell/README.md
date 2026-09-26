@@ -14,7 +14,7 @@ This is the deployment note for the Blueblood in-house server. It does not modif
 
 1. Install an open model on the Dell: `ollama pull qwen2.5:3b`.
 2. Do not build application images on the Dell. GitHub Actions publishes a Linux amd64 image to `ghcr.io/manankadel/perpendicular-api` for every `main` release. Dell only pulls an exact image digest and never runs `git pull`, `npm ci`, or `docker build` for Perpendicular.
-3. Create the dedicated `perpendicular` database, apply `db/001_workspace_state.sql`, `db/002_platform.sql`, `db/003_gmail_events_health.sql`, `db/004_usage_ledger.sql`, and then `db/005_outbound_messages.sql`. Put runtime values in a root-owned env file, not in this repository:
+3. Create the dedicated `perpendicular` database, apply `db/001_workspace_state.sql`, `db/002_platform.sql`, `db/003_gmail_events_health.sql`, `db/004_usage_ledger.sql`, `db/005_outbound_messages.sql`, and `db/006_rate_limits.sql`. Put runtime values in a root-owned env file, not in this repository:
 
 ```env
 DATABASE_URL=postgresql://blueblood:<password>@postgres:5432/perpendicular
@@ -36,6 +36,7 @@ INTEGRATION_ENCRYPTION_KEY=<32-byte-key>
 GMAIL_PUBSUB_TOPIC=projects/<project>/topics/<topic>
 GMAIL_WEBHOOK_SECRET=<long-random-secret>
 API_KEY_RATE_LIMIT_PER_MINUTE=120
+PERPENDICULAR_BACKUP_REMOTE=<rclone-remote-path>
 ALLOW_LOCAL_LLM_FALLBACK=false
 ```
 
