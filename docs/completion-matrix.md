@@ -30,7 +30,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Webhook catalog and dead-letter replay controls | Implemented; provider E2E pending | `/api/ops`, Settings → Operations |
 | Operational health counts for dead letters, failed webhooks, and degraded integrations | Live and deployed | `/api/health`, required schema includes outbound send records |
 | Dell local backup schedule, clean-database restore rehearsal, and off-machine copy | Live | Root cron at 02:15, verified custom-format dump, restore into `perpendicular_restore_check` with 13 platform tables, and Mac launchd pull of `/opt/blueblood/backups/perpendicular` via the existing least-privilege sudo rule |
-| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:515d61829fb5bb26aa052ef15c1daedf9bcd2145dac5bc15e522c6308b8edd05`, build `497f475`, eight checks, 2026-09-27 |
+| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:a9ad79c89437a90157ed804703c07746ea1462c204472657896d37bc569a6d94`, build `d9ef436`, eight checks, 2026-09-27 |
 | Dell heartbeat trigger | Live and verified on the host | Root-owned `/usr/local/sbin/perpendicular-heartbeat`, `flock` lock, API-origin request, and successful authenticated tick on 2026-09-26 |
 | CI verification before image publication | Live | `.github/workflows/perpendicular-image.yml` runs check and production audit before publish |
 
@@ -61,11 +61,10 @@ These are present in the comparison/audit documents but are not silently faked i
 
 ## Remaining launch evidence
 
-The code is launchable for the documented open-source launch scope. The Dell API, public UI, public GitHub repository, and Git-triggered Vercel release path are live. Public launch evidence still requires real external state:
+The code is launchable for the documented open-source launch scope. The Dell API, public UI, public GitHub repository, and Git-triggered Vercel release path are live. Public launch evidence still requires one real external provider state:
 
 1. Run an authenticated Gmail OAuth → test-send → reply → sync → sequence-pause test with a mailbox the operator controls.
-2. Run a second-workspace isolation test against the deployed Blueblood ID memberships.
-3. Run the final authenticated browser walkthrough against the Git-connected UI and API.
+2. Keep the authenticated browser walkthrough as a regression check after each production release; the current release has now passed it.
 
 None of these are replaced with sample data or a green UI state.
 
@@ -73,14 +72,15 @@ None of these are replaced with sample data or a green UI state.
 
 Read-only checks on 2026-09-27 found:
 
-- The live API is healthy on promoted immutable image `497f475` (`sha256:515d61829fb5bb26aa052ef15c1daedf9bcd2145dac5bc15e522c6308b8edd05`); the production smoke suite passed all eight checks, including the public widget entry route.
-- The authenticated browser session reaches the live workbench and completed a real mission through Dell → Ollama → Postgres; the API now also identifies Perpendicular correctly in the same chat path instead of borrowing another product identity.
-- The verified UI is live on the existing public aliases through Git-triggered deployment `dpl_5on816iPY7cR8EFYxNG5cNgtzgZu` from `aa28056` (`perpendicular-nine.vercel.app`, promoted 2026-09-27); the production target is `READY` and `PROMOTED` with the expected aliases.
+- The live API is healthy on promoted immutable image `d9ef436` (`sha256:a9ad79c89437a90157ed804703c07746ea1462c204472657896d37bc569a6d94`); the production smoke suite passed all eight checks, including the public widget entry route.
+- The authenticated browser session reaches the live workbench, completed a real mission through Dell → Ollama → Postgres, answered a real employee chat, approved the mission, generated grounded content, and created/enriched a Smart List row.
+- The verified UI is live on the existing public aliases through Git-triggered deployment `dpl_8DhZ9okSCQsAGXGYoE7qaK7KVLVi` from `d9ef436` (`perpendicular-nine.vercel.app`, promoted 2026-09-27); the production target is `READY` with the expected aliases.
 - The onboarding proof now attaches the scored first run to the first real mission, so opening the workbench produces a reviewable mission instead of an empty queue.
 - The compatibility migration was exercised against the existing `blueblood-studio` workspace: the Dell row now persists `seq-onboarding-blueblood-studio` with all five draft steps, without resetting the workspace.
 - The Dell host heartbeat is installed as a root-owned helper with a non-overlap lock and calls `https://perpendicular-api.bluebloodstudio.com/api/cron/heartbeat`; an authenticated tick returned successfully.
 - Dell reports all required workspace, platform, Gmail event/health, usage-ledger, and outbound-message tables present; schema health has no missing tables.
 - The API-key rate-limit table is applied additively on Dell; the transactional workspace write path, outbound safety guardrails, CSV lead import, and public widget are live on the promoted image.
 - Dell local backups are scheduled at 02:15, a fresh dump was created, restore rehearsal into `perpendicular_restore_check` succeeded with one workspace row and 13 platform tables, and the latest dump was copied to `/Users/manankadel/blueblood-backups/perpendicular` with a matching SHA-256 checksum.
-- The canonical login UI and self-serve workspace form load in Chrome. The verified UI is promoted on the public Vercel aliases and the Dell API is healthy; the final walkthrough must be repeated with the authenticated production session after the operator signs in.
-- Product-owned Google sign-in/MFA and Gmail OAuth are implemented and configured; an authenticated browser walkthrough and the complete test-send → reply → sync → sequence-pause evidence are still outstanding.
+- The canonical login UI and self-serve workspace form load in Chrome. The authenticated production walkthrough is complete against the Git-connected UI and API; the Gmail provider test remains the only provider-specific walkthrough still outstanding.
+- Product-owned Google sign-in/MFA and Gmail OAuth are implemented and configured; the complete test-send → reply → sync → sequence-pause evidence is still outstanding.
+- A second disposable Blueblood ID account received an isolated empty workspace (`personal-47`) while the audit workspace remained populated as `personal-46`; no cross-tenant records were returned.
