@@ -29,7 +29,6 @@ This is the implementation truth for the supplied product and audit documents. A
 | Webhook catalog and dead-letter replay controls | Implemented; provider E2E pending | `/api/ops`, Settings → Operations |
 | Operational health counts for dead letters, failed webhooks, and degraded integrations | Live in code; deployed verification pending | `/api/health` |
 | Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:51b3ec17…`, 2026-09-26 |
-| Vercel alias session compatibility | Live | `src/proxy.ts` redirects `*.vercel.app` traffic to the canonical cookie-compatible origin |
 | CI verification before image publication | Live | `.github/workflows/perpendicular-image.yml` runs check and production audit before publish |
 
 ## Dated launch-audit fixes

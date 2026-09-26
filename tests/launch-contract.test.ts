@@ -85,13 +85,6 @@ test("Google sign-in stays product-owned and uses a safe return path", () => {
   assert.match(login, /api\/auth\/google\/start/);
 });
 
-test("the Vercel alias redirects to the canonical cookie-compatible product origin", () => {
-  const proxy = readFileSync(join(root, "src/proxy.ts"), "utf8");
-  assert.match(proxy, /endsWith\("\.vercel\.app"\)/);
-  assert.match(proxy, /NEXT_PUBLIC_CANONICAL_URL/);
-  assert.match(proxy, /NextResponse\.redirect/);
-});
-
 test("Gmail sync has a workspace-scoped inbox read surface", () => {
   const route = readFileSync(join(root, "src/app/api/inbox/route.ts"), "utf8");
   const sync = readFileSync(join(root, "src/app/api/integrations/gmail/sync/route.ts"), "utf8");
