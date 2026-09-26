@@ -457,6 +457,12 @@ button:disabled { cursor: wait; opacity: .52; }
 .setting-description { margin-top: 4px; color: var(--text-muted); font-size: 10px; line-height: 1.45; }
 .setting-value { color: var(--mint); font-size: 10px; font-weight: 700; text-align: right; }
 .code-value { border: 1px solid var(--line); border-radius: 5px; padding: 7px 8px; color: var(--blue); background: #0d1012; font-family: "SFMono-Regular", Consolas, monospace; font-size: 10px; }
+.checkbox-row { align-items: center; color: var(--text); display: flex; gap: 8px; margin-top: 8px; }
+.checkbox-row input { accent-color: var(--mint); }
+.field-label { color: var(--text-dim); display: block; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; }
+.key-reveal { align-items: center; background: rgba(159,229,193,.08); border: 1px solid rgba(159,229,193,.28); display: grid; gap: 10px; margin-top: 16px; padding: 14px; }
+.key-reveal p { color: var(--text-dim); margin: 3px 0 0; }
+.key-reveal code { background: var(--panel-strong); border: 1px solid var(--line); display: block; overflow-wrap: anywhere; padding: 10px; }
 
 @media (max-width: 1100px) {
   .workbench-grid, .subpage-grid, .settings-grid { grid-template-columns: 1fr; }
