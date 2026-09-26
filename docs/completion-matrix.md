@@ -9,7 +9,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Product-owned sign-in with Blueblood ID session authority | Live | `src/app/api/auth/*`, `src/lib/identity.ts`, auth tests |
 | Workspace discovery from a real public URL or operator brief | Live | `bootstrap-workspace`, `src/lib/public-research.ts` |
 | Discovery creates a usable operator pod, company profile, missions, and first content brief | Live | `buildOnboardingArtifacts`, `bootstrap-workspace`, onboarding UI, domain migration tests |
-| Onboarding proof gate and explicit manual-vs-heartbeat handoff | Live | `proved` onboarding state, `finish-onboarding`, `enable-onboarding-schedule`, onboarding UI |
+| Onboarding proof gate and explicit manual-vs-heartbeat handoff | Live | `proved` onboarding state, first mission linkage, `finish-onboarding`, `enable-onboarding-schedule`, onboarding UI |
 | Employee → scoped knowledge → local Ollama run → score → trace | Live | `run-employee`, `llm.ts`, `Run.trace`, domain tests |
 | Mission queue with run → review → approve, delegation, due dates, and audit activity | Live at launch scope | `run-mission`, `approve-mission`, `delegate-mission`, Missions view |
 | Grounded content workflow with draft → review → approve → schedule → publish state | Live at launch scope | `generate-content`, `approve-content`, `schedule-content`, Content view |
@@ -29,7 +29,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Workspace JSON/CSV export and owner-confirmed deletion | Implemented; destructive E2E pending | `/api/workspace/export`, `/api/workspace/privacy` |
 | Webhook catalog and dead-letter replay controls | Implemented; provider E2E pending | `/api/ops`, Settings → Operations |
 | Operational health counts for dead letters, failed webhooks, and degraded integrations | Live and deployed | `/api/health`, required schema includes outbound send records |
-| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:17dde58b…`, build `ec8851b`, eight checks, 2026-09-26 |
+| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:52258cd2…`, build `e748b9a`, eight checks, 2026-09-26 |
 | Dell heartbeat trigger | Live and verified on the host | Root-owned `/usr/local/sbin/perpendicular-heartbeat`, `flock` lock, API-origin request, and successful authenticated tick on 2026-09-26 |
 | CI verification before image publication | Live | `.github/workflows/perpendicular-image.yml` runs check and production audit before publish |
 
@@ -73,9 +73,10 @@ None of these are replaced with sample data or a green UI state.
 
 Read-only checks on 2026-09-26 found:
 
-- The live API is healthy on promoted immutable image `ec8851b` (`sha256:17dde58b5991d253080c45a3ca032b3016f9170d04fa5b34ecd164a8dbd58ab3`); the production smoke suite passed all eight checks, including the public widget entry route.
+- The live API is healthy on promoted immutable image `e748b9a` (`sha256:52258cd2da7e2dd4abb90ace4f1dd9b179ebaf152c1b0e4ac21c4a616098d151`); the production smoke suite passed all eight checks, including the public widget entry route.
+- The onboarding proof now attaches the scored first run to the first real mission, so opening the workbench produces a reviewable mission instead of an empty queue.
 - The Dell host heartbeat is installed as a root-owned helper with a non-overlap lock and calls `https://perpendicular-api.bluebloodstudio.com/api/cron/heartbeat`; an authenticated tick returned successfully.
 - Dell reports all required workspace, platform, Gmail event/health, usage-ledger, and outbound-message tables present; schema health has no missing tables.
 - The API-key rate-limit table is applied additively on Dell; the transactional workspace write path, outbound safety guardrails, CSV lead import, and public widget are live on the promoted image.
 - Dell local backups exist and restore rehearsal passed, but the rclone configuration and offsite remote are absent.
-- Product-owned Google sign-in/MFA and Gmail OAuth have been verified in the live flow; the complete test-send → reply → sync → sequence-pause evidence is still outstanding.
+- Product-owned Google sign-in/MFA and Gmail OAuth are implemented and configured; an authenticated browser walkthrough and the complete test-send → reply → sync → sequence-pause evidence are still outstanding.

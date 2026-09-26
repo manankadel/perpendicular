@@ -105,6 +105,9 @@ button:disabled { cursor: wait; opacity: .52; }
 .sidebar-footer { padding: 16px 18px 18px; border-top: 1px solid var(--line); }
 .server-chip { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 11px; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 0 3px rgba(158,227,190,.1); }
+.runtime-status.warning .status-dot { background: var(--signal); box-shadow: 0 0 0 3px rgba(242,167,102,.12); }
+.runtime-status.error .status-dot { background: var(--danger); box-shadow: 0 0 0 3px rgba(255,154,146,.12); }
+.runtime-status.checking .status-dot { background: var(--text-dim); box-shadow: none; }
 .sidebar-footer small { display: block; margin-top: 9px; color: var(--text-dim); font-size: 10px; line-height: 1.5; }
 
 .widget-shell { width: min(100%, 420px); min-height: 560px; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; color: var(--text); background: var(--surface); box-shadow: 0 22px 70px rgba(0,0,0,.28); }

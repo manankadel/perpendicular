@@ -41,6 +41,14 @@ type Mutation = (action: string, payload?: Record<string, unknown>, success?: st
 type Viewer = { email: string; firstName: string; lastName: string };
 type OpsSummary = { webhooks: WebhookEventSummary[]; deadLetterJobs: DeadLetterJob[] };
 type ApiKeySummary = { id: string; name: string; keyPrefix: string; scopes: string[]; createdAt: string; lastUsedAt: string | null };
+type RuntimeHealth = {
+  ok: boolean;
+  database: string;
+  model: string;
+  version: string;
+  configuration: { gaps: string[]; warnings: string[] };
+  operations: { deadLetterJobs: number; failedWebhooks: number; degradedIntegrations: number } | null;
+};
 
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
 const canonicalOrigin = (process.env.NEXT_PUBLIC_CANONICAL_URL || "").replace(/\/$/, "");
@@ -159,6 +167,14 @@ function PageHeading({ eyebrow, title, subtitle, children }: { eyebrow: string; 
 
 function PanelHeader({ title, caption, children }: { title: string; caption?: string; children?: React.ReactNode }) {
   return <div className="panel-header"><div><div className="panel-title">{title}</div>{caption ? <div className="panel-caption">{caption}</div> : null}</div>{children ? <div className="panel-header-actions">{children}</div> : null}</div>;
+}
+
+function RuntimeStatus({ health, error, compact = false }: { health: RuntimeHealth | null; error: boolean; compact?: boolean }) {
+  const operationalIssue = Boolean(health?.configuration.gaps.length || health?.configuration.warnings.length || health?.operations?.deadLetterJobs || health?.operations?.failedWebhooks || health?.operations?.degradedIntegrations);
+  const status = error ? "error" : !health ? "checking" : !health.ok ? "error" : operationalIssue ? "warning" : "healthy";
+  const label = status === "error" ? (compact ? "Self-hosted · offline" : "Dell unavailable") : status === "checking" ? (compact ? "Self-hosted · checking" : "Checking Dell") : status === "warning" ? (compact ? "Self-hosted · attention" : "Dell online · attention") : compact ? "Self-hosted · online" : "Dell node healthy";
+  const detail = error ? "The live Dell health endpoint could not be reached." : !health ? "Checking the live Dell health endpoint." : `API ${health.version.slice(0, 12)} · database ${health.database} · model ${health.model}${operationalIssue ? " · review configuration or operations" : ""}`;
+  return <div className={`${compact ? "server-status" : "server-chip"} runtime-status ${status}`} title={detail} aria-live="polite"><span className="status-dot" />{label}</div>;
 }
 
 function EmployeeCard({ employee, selected, onSelect }: { employee: Employee; selected: boolean; onSelect: () => void }) {
@@ -309,7 +325,12 @@ function SequencesView({ state, mutate, setShowSequence }: { state: WorkspaceSta
   const nextSequence = state.sequences[0];
   const gmailConnected = state.integrations?.some((integration) => integration.provider === "gmail" && integration.status === "connected") === true;
   const nextRow = list?.rows.find((row) => row.status === "enriched" && row.enrollmentStatus !== "enrolled");
-  return <><PageHeading eyebrow="One list, one send" title="Follow-through with guardrails." subtitle="A sequence is a controlled rhythm—not a blast. Gmail, reply-pause, suppression, and human approval are part of the send path."><button className="button-primary" onClick={() => setShowSequence(true)}><Plus size={13} />Create sequence</button><button className="button-secondary" disabled={!list || !nextSequence || !nextRow || !gmailConnected} onClick={() => void mutate("enroll-row", { listId: list?.id, rowId: nextRow?.id, sequenceId: nextSequence?.id }, "The next researched row entered the sequence.")}><Send size={13} />{gmailConnected ? "Enroll next researched row" : "Connect Gmail to enroll"}</button></PageHeading>{state.sequences.length ? <div className="sequence-list">{state.sequences.map((sequence) => <section className="sequence-card" key={sequence.id}><div className="sequence-head"><div><div className="sequence-name">{sequence.name} <StatusPill status={sequence.status === "live" ? "live" : "draft"} /></div><div className="sequence-audience">Audience · {sequence.audience}</div></div><div className="sequence-metrics"><div className="sequence-metric"><strong>{sequence.enrolled}</strong><span>Enrolled</span></div><div className="sequence-metric"><strong>{sequence.sent || 0}</strong><span>Sent</span></div><div className="sequence-metric"><strong>{sequence.replied}</strong><span>Replies</span></div><div className="sequence-metric"><strong>{sequence.booked}</strong><span>Booked</span></div></div></div><div className="steps">{sequence.steps.map((step, index) => <div className="step" key={step.id}><div className="step-number">{index + 1}</div><div className="step-channel">{step.channel}</div><div><div className="step-title">{step.title}</div>{step.subject ? <div className="step-body">Subject: {step.subject}</div> : null}<div className="step-body">{step.body}</div></div><div className="step-delay">{step.delay}</div></div>)}</div>{sequence.status === "live" ? <div className="sequence-footer"><span className="list-meta">Suppression · reply-pause · timezone windows · audit log</span></div> : <div className="sequence-footer"><span className="list-meta">Draft · review this message, then activate it for explicit sends.</span><button className="small-button ready" onClick={() => void mutate("activate-sequence", { sequenceId: sequence.id }, `${sequence.name} is live. Each email still needs your approval.`)}><Check size={11} />Activate after review</button></div>}</section>)}</div> : <div className="empty-state">Create a draft sequence, then connect Gmail before any external send is enabled.</div>}</>;
+  const enrollAction = !list || !nextSequence || !nextRow
+    ? <button className="button-secondary" disabled><Send size={13} />No researched row ready</button>
+    : gmailConnected
+      ? <button className="button-secondary" onClick={() => void mutate("enroll-row", { listId: list.id, rowId: nextRow.id, sequenceId: nextSequence.id }, "The next researched row entered the sequence.")}><Send size={13} />Enroll next researched row</button>
+      : <a className="button-secondary" href={apiPath("/api/integrations/google/start")}><Mail size={13} />Connect Gmail to enroll</a>;
+  return <><PageHeading eyebrow="One list, one send" title="Follow-through with guardrails." subtitle="A sequence is a controlled rhythm—not a blast. Gmail, reply-pause, suppression, and human approval are part of the send path."><button className="button-primary" onClick={() => setShowSequence(true)}><Plus size={13} />Create sequence</button>{enrollAction}</PageHeading>{state.sequences.length ? <div className="sequence-list">{state.sequences.map((sequence) => <section className="sequence-card" key={sequence.id}><div className="sequence-head"><div><div className="sequence-name">{sequence.name} <StatusPill status={sequence.status === "live" ? "live" : "draft"} /></div><div className="sequence-audience">Audience · {sequence.audience}</div></div><div className="sequence-metrics"><div className="sequence-metric"><strong>{sequence.enrolled}</strong><span>Enrolled</span></div><div className="sequence-metric"><strong>{sequence.sent || 0}</strong><span>Sent</span></div><div className="sequence-metric"><strong>{sequence.replied}</strong><span>Replies</span></div><div className="sequence-metric"><strong>{sequence.booked}</strong><span>Booked</span></div></div></div><div className="steps">{sequence.steps.map((step, index) => <div className="step" key={step.id}><div className="step-number">{index + 1}</div><div className="step-channel">{step.channel}</div><div><div className="step-title">{step.title}</div>{step.subject ? <div className="step-body">Subject: {step.subject}</div> : null}<div className="step-body">{step.body}</div></div><div className="step-delay">{step.delay}</div></div>)}</div>{sequence.status === "live" ? <div className="sequence-footer"><span className="list-meta">Suppression · reply-pause · timezone windows · audit log</span></div> : <div className="sequence-footer"><span className="list-meta">Draft · review this message, then activate it for explicit sends.</span><button className="small-button ready" onClick={() => void mutate("activate-sequence", { sequenceId: sequence.id }, `${sequence.name} is live. Each email still needs your approval.`)}><Check size={11} />Activate after review</button></div>}</section>)}</div> : <div className="empty-state">Create a draft sequence, then connect Gmail before any external send is enabled.</div>}</>;
 }
 
 type InboxMessage = {
@@ -674,6 +695,8 @@ function Modal({ title, description, onClose, children }: { title: string; descr
 export default function PerpendicularConsole() {
   const [state, setState] = useState<WorkspaceState | null>(null);
   const [usage, setUsage] = useState<UsageSummary | null>(null);
+  const [runtimeHealth, setRuntimeHealth] = useState<RuntimeHealth | null>(null);
+  const [runtimeHealthError, setRuntimeHealthError] = useState(false);
   const [viewer, setViewer] = useState<Viewer | null>(null);
   const [loginUrl, setLoginUrl] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<View>("overview");
@@ -723,6 +746,26 @@ export default function PerpendicularConsole() {
       .then(async (response) => response.ok ? setUsage(await response.json() as UsageSummary) : undefined)
       .catch(() => undefined);
   }, [state?.runs.length, state?.workspace.aiCredits.remaining, state?.workspace.dataCredits.remaining]);
+
+  useEffect(() => {
+    let active = true;
+    const refreshHealth = async () => {
+      try {
+        const response = await fetch(apiPath("/api/health"), { cache: "no-store" });
+        const data = await response.json() as RuntimeHealth;
+        if (!active) return;
+        setRuntimeHealth(data);
+        setRuntimeHealthError(!response.ok);
+      } catch {
+        if (!active) return;
+        setRuntimeHealth(null);
+        setRuntimeHealthError(true);
+      }
+    };
+    void refreshHealth();
+    const interval = window.setInterval(() => void refreshHealth(), 60000);
+    return () => { active = false; window.clearInterval(interval); };
+  }, []);
 
   useEffect(() => {
     if (!notice) return;
@@ -838,11 +881,11 @@ export default function PerpendicularConsole() {
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark" /><span>perpendicular<span className="brand-meta">open work system</span></span></div>
       <div className="nav-scroll">{navGroups.map((group) => <div className="nav-group" key={group.label}><div className="nav-label">{group.label}</div>{group.items.map((item) => { const Icon = item.icon; const count = navCount(item.id, state); return <button className={`nav-item ${activeView === item.id ? "active" : ""}`} onClick={() => setActiveView(item.id)} key={item.id}><Icon size={15} strokeWidth={1.8} /><span>{item.label}</span>{count !== null ? <span className="nav-count">{count}</span> : null}</button>; })}</div>)}</div>
-      <div className="sidebar-footer"><div className="server-chip"><span className="status-dot" />Dell node healthy</div><small>Ollama local runtime<br />Postgres persistence · LAN / Dell</small></div>
+      <div className="sidebar-footer"><RuntimeStatus health={runtimeHealth} error={runtimeHealthError} /><small>Ollama local runtime<br />Postgres persistence · LAN / Dell</small></div>
     </aside>
     <div className="main-shell">
       <div className="mobile-topbar">{navigation.map((item) => { const Icon = item.icon; return <button className={`nav-item ${activeView === item.id ? "active" : ""}`} onClick={() => setActiveView(item.id)} key={item.id}><Icon size={13} /><span>{item.label}</span></button>; })}</div>
-      <header className="topbar"><div className="crumbs"><strong>{state.workspace.name}</strong><span className="slash">/</span><span>{activeLabel}</span></div><div className="top-actions"><div className="server-status"><span className="status-dot" />Self-hosted · online</div><button className="command-button" onClick={() => { setActiveView("overview"); window.setTimeout(() => document.querySelector<HTMLTextAreaElement>(".chat-compose textarea")?.focus(), 0); }}><Sparkles size={13} />Ask the system</button></div></header>
+      <header className="topbar"><div className="crumbs"><strong>{state.workspace.name}</strong><span className="slash">/</span><span>{activeLabel}</span></div><div className="top-actions"><RuntimeStatus health={runtimeHealth} error={runtimeHealthError} compact /><button className="command-button" onClick={() => { setActiveView("overview"); window.setTimeout(() => document.querySelector<HTMLTextAreaElement>(".chat-compose textarea")?.focus(), 0); }}><Sparkles size={13} />Ask the system</button></div></header>
       <main className="content">{activeView === "overview" ? <Overview state={state} usage={usage} selectedEmployeeId={selectedEmployeeId} setSelectedEmployeeId={setSelectedEmployeeId} setView={setActiveView} chatInput={chatInput} setChatInput={setChatInput} chatBusy={busyAction === "chat"} onSend={sendChat} /> : activeView === "missions" ? <MissionsView state={state} mutate={mutate} /> : activeView === "employees" ? <EmployeesView state={state} selectedEmployeeId={selectedEmployeeId} setSelectedEmployeeId={setSelectedEmployeeId} mutate={mutate} setShowHire={setShowHire} /> : activeView === "knowledge" ? <KnowledgeView state={state} setShowDocument={setShowDocument} /> : activeView === "content" ? <ContentView state={state} mutate={mutate} /> : activeView === "lists" ? <ListsView state={state} mutate={mutate} setShowDocument={setShowDocument} setShowList={setShowList} setShowLead={(show, listId) => { setShowLead(show); if (listId) setLeadListId(listId); }} /> : activeView === "sequences" ? <SequencesView state={state} mutate={mutate} setShowSequence={setShowSequence} /> : activeView === "inbox" ? <InboxView state={state} mutate={mutate} setShowTicket={setShowTicket} /> : activeView === "playbooks" ? <PlaybooksView state={state} mutate={mutate} /> : activeView === "activity" ? <ActivityView state={state} /> : <SettingsView state={state} usage={usage} />}</main>
     </div>
     {notice ? <div className="notice" role="status">{notice}</div> : null}
