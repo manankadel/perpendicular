@@ -18,7 +18,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Prompt versions, golden tests, evaluate, activate, rollback | Live | Employee detail UI and workspace actions |
 | Heartbeat scheduling with Postgres-leased idempotency | Live | `src/lib/job-store.ts`, heartbeat route, job tests |
 | Smart Lists, public research, dedupe, credit decrement, sequence enrollment | Live at launch scope | Workspace actions and UI |
-| Draft sequences with reply-pause/suppression guardrails | Live at launch scope | Sequence state and Gmail reply handling |
+| Draft sequences with activation, explicit Gmail first-step send, reply-pause/suppression guardrails, and durable send idempotency | Live at launch scope | `activate-sequence`, `send-sequence-step`, `db/005_outbound_messages.sql`, Gmail reply handling |
 | Ticket queue, priority SLA, resolution, CSAT | Live at launch scope | `ticketSlaMinutes`, inbox UI, workspace actions |
 | Gmail OAuth, encrypted refresh tokens, sync, watch renewal, webhook dedupe | Implemented; provider E2E pending | Gmail routes and integration health tables |
 | Persisted Gmail inbox message read surface | Live in code; provider E2E pending | `/api/inbox`, Inbox view, `inbox-store.ts` |
@@ -27,8 +27,8 @@ This is the implementation truth for the supplied product and audit documents. A
 | Usage ledger and usage endpoint | Implemented; migration must be applied | `db/004_usage_ledger.sql`, `/api/usage` |
 | Workspace JSON/CSV export and owner-confirmed deletion | Implemented; destructive E2E pending | `/api/workspace/export`, `/api/workspace/privacy` |
 | Webhook catalog and dead-letter replay controls | Implemented; provider E2E pending | `/api/ops`, Settings → Operations |
-| Operational health counts for dead letters, failed webhooks, and degraded integrations | Live in code; deployed verification pending | `/api/health` |
-| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:51b3ec17…`, 2026-09-26 |
+| Operational health counts for dead letters, failed webhooks, and degraded integrations | Live and deployed | `/api/health`, required schema includes outbound send records |
+| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:50c2fc1e…`, 2026-09-26 |
 | CI verification before image publication | Live | `.github/workflows/perpendicular-image.yml` runs check and production audit before publish |
 
 ## Dated launch-audit fixes
@@ -72,6 +72,6 @@ None of these are replaced with sample data or a green UI state.
 Read-only checks on 2026-09-26 found:
 
 - The live API is healthy on the promoted immutable image for the current release; the production smoke suite passed all seven checks.
-- Dell reports all required workspace, platform, Gmail event/health, and usage-ledger tables present; schema health has no missing tables.
+- Dell reports all required workspace, platform, Gmail event/health, usage-ledger, and outbound-message tables present; schema health has no missing tables.
 - Dell local backups exist and restore rehearsal passed, but the rclone configuration and offsite remote are absent.
 - Product-owned Google sign-in/MFA and Gmail OAuth have been verified in the live flow; the complete test-send → reply → sync → sequence-pause evidence is still outstanding.

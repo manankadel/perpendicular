@@ -9,11 +9,11 @@ Perpendicular is a multi-tenant AI work system. The primary user journey is:
 3. Blueblood ID's session contains the user and organization memberships.
 4. The product resolves the active organization and enforces its role before every read or write.
 5. On a new workspace, Perpendicular derives a public company URL from the signed-in business email when possible. The operator can replace it or provide a short brief.
-6. A discovery command fetches only that public source, persists the readable content, and creates one goal-specific Employee with a versioned prompt and golden test. No sample leads or fake metrics are inserted.
+6. A discovery command fetches only that public source, persists the readable content, and creates a four-role operator pod with versioned prompts and golden tests. No sample leads or fake metrics are inserted in production.
 7. The operator runs a first brief through the Dell Ollama worker. The result is persisted as a scored, traced Run before the onboarding flow is complete.
 8. Only after that proof does the product offer a daily Heartbeat schedule. Gmail remains disconnected and send-gated until the operator explicitly connects and tests it.
 9. A Smart List discovers or imports people and companies, enriches rows, scores fit, removes duplicates, and applies suppression rules.
-10. Qualified rows can enter a Sequence. The sender adapter sends through a connected mailbox, respects timezone and daily limits, pauses on replies or suppression, and records every provider event.
+10. Qualified rows can enter a Sequence. After an operator activates the reviewed sequence, each Email step can be explicitly approved and sent through a connected Gmail mailbox. The send is rendered from the row, persisted with a workspace/sequence/row/step idempotency key, indexed in Inbox, and paused by reply or suppression rules. Automatic multi-step sending and provider-specific send windows remain future worker work.
 11. Inbox events are normalized into conversations. Employees can draft or send only when the workspace policy allows it; otherwise a human approval gate is required.
 12. Heartbeat jobs run through a Postgres-leased worker path at launch. Every run is idempotent, retryable, scored, traced, and visible in Activity; Redis is the scale-out seam.
 13. The Executive Assistant, API, and MCP surfaces call the same application commands as the web UI.
@@ -54,7 +54,7 @@ The initial launch target is Tier 1/2: one monolithic API, one worker process, o
 
 ## Current launch data model
 
-Postgres is the source of truth for production. The current workspace aggregate is stored in `perpendicular_workspace_state` so the first launch can preserve the domain contract while the remaining normalized domain tables are introduced. Integration credentials, OAuth states, API keys, audit events, jobs, Gmail inbox records, provider health, webhook events, and usage ledger records are separate tables in `db/002_platform.sql`, `db/003_gmail_events_health.sql`, and `db/004_usage_ledger.sql`.
+Postgres is the source of truth for production. The current workspace aggregate is stored in `perpendicular_workspace_state` so the first launch can preserve the domain contract while the remaining normalized domain tables are introduced. Integration credentials, OAuth states, API keys, audit events, jobs, Gmail inbox records, provider health, webhook events, usage ledger records, and idempotent outbound send records are separate tables in `db/002_platform.sql`, `db/003_gmail_events_health.sql`, `db/004_usage_ledger.sql`, and `db/005_outbound_messages.sql`.
 
 Target normalized tables:
 
@@ -76,10 +76,10 @@ All tenant-owned tables include `workspace_id`, indexes begin with that key wher
 - The launch runner is a host-triggered heartbeat endpoint. It scans persisted due schedules, claims `perpendicular_jobs` with a lease and idempotency key, runs only due employees, and advances the next run time after success.
 - The launch worker uses Postgres leases for restart safety. Redis remains the scale-out seam for queue partitioning and distributed rate limits; the current API-key limiter is bounded in-memory per API process.
 - Credit consumption is persisted in `perpendicular_usage_ledger` and exposed through `/api/usage`; the aggregate credit balance remains the fast product guardrail.
-- Gmail sync is explicit and deduplicates by provider message ID. Sequence sends remain approval-gated until a durable sender worker is deployed.
+- Gmail sync is explicit and deduplicates by provider message ID. The first Email step is approval-gated and protected by a durable outbound idempotency record; automatic later-step scheduling is intentionally not claimed until a sender worker exists.
 - Heartbeat jobs use bounded retries and a dead-letter state; no UI may report a background job as complete before its persisted result exists.
 - Provider webhooks are persisted before processing and deduplicated by provider event ID.
-- A worker restart must be safe: a job can run twice without sending a duplicate message or charging twice.
+- A worker restart must be safe: a job can run twice without sending a duplicate message or charging twice. An outbound request with an unknown provider outcome is held for reconciliation rather than retried blindly.
 - Synchronous HTTP routes are limited to validation, command creation, and fast reads. Long work returns a job ID.
 
 ## Integration policy

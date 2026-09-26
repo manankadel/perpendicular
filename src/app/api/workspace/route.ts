@@ -301,7 +301,12 @@ async function postWorkspace(request: Request): Promise<Response> {
         await markOutboundUnknown(claimed.record.id, "Gmail returned no message id.");
         return json({ error: "Gmail returned no message id. Do not retry until the mailbox is reconciled." }, { status: 502 });
       }
-      await markOutboundSent(claimed.record.id, sent.id, sent.threadId || null);
+      try {
+        await markOutboundSent(claimed.record.id, sent.id, sent.threadId || null);
+      } catch (error) {
+        await markOutboundUnknown(claimed.record.id, error instanceof Error ? error.message : "The send record could not be completed.").catch(() => undefined);
+        return json({ error: "Gmail accepted the message, but Perpendicular could not persist its send record. Do not retry until the mailbox is reconciled." }, { status: 503 });
+      }
       const sentAt = timestamp();
       const updated = await applySequenceDelivery({ workspaceId: companyId, listId, rowId, sequenceId, stepIndex, providerMessageId: sent.id, sentAt });
       let inboxRecorded = false;
