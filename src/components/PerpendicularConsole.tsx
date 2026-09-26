@@ -227,6 +227,9 @@ function KnowledgeView({ state, setShowDocument }: { state: WorkspaceState; setS
 function ListsView({ state, mutate: providedMutate, setShowList, setShowLead }: { state: WorkspaceState; mutate?: Mutation; setShowList: (show: boolean) => void; setShowLead: (show: boolean) => void; setShowDocument?: (show: boolean) => void }) {
   const list = state.lists[0];
   const [actionError, setActionError] = useState<string | null>(null);
+  const [csvMessage, setCsvMessage] = useState<string | null>(null);
+  const [csvErrors, setCsvErrors] = useState<Array<{ line: number; reason: string }>>([]);
+  const [csvBusy, setCsvBusy] = useState(false);
   const mutate: Mutation = providedMutate || (async (action, payload = {}) => {
     setActionError(null);
     try {
@@ -241,7 +244,26 @@ function ListsView({ state, mutate: providedMutate, setShowList, setShowLead }: 
   });
   const [filter, setFilter] = useState("");
   const filteredRows = list?.rows.filter((row) => `${row.name} ${row.company} ${row.role}`.toLowerCase().includes(filter.toLowerCase())) || [];
-  return <><PageHeading eyebrow="Rows that do work" title="Smart Lists are workflows." subtitle="Import people, research public company evidence, and enroll only qualified rows. Perpendicular never labels an email verified without a real verification provider."><button className="button-secondary" onClick={() => setShowList(true)}><Plus size={13} />Create list</button><button className="button-primary" disabled={!list} onClick={() => setShowLead(true)}><Plus size={13} />Add lead</button></PageHeading>{actionError ? <div className="notice" role="alert">{actionError}</div> : null}{list ? <div className="panel"><PanelHeader title={list.name} caption={`${list.rows.length} rows · ${list.rows.filter((row) => row.status === "enriched").length} researched`}><div className="server-status"><span className="status-dot" />Public evidence only</div></PanelHeader><div className="list-toolbar"><div className="toolbar-search"><SearchIcon /><input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search rows…" aria-label="Search smart list rows" /></div><div className="credit-preview"><Database size={13} />Research estimate: <strong>{filteredRows.length * 2} Data Credits</strong></div></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Person</th><th>Role / location</th><th>ICP score</th><th>Signal</th><th>Sequence</th><th>Actions</th></tr></thead><tbody>{filteredRows.map((row) => <SmartRowItem key={row.id} row={row} list={list} state={state} mutate={mutate} />)}</tbody></table>{!filteredRows.length ? <div className="empty-state">Add a lead to start this list.</div> : null}</div></div> : <div className="empty-state">Create a list, then add a lead or import one through the API.</div>}</>;
+  const importCsv = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !list) return;
+    setCsvBusy(true);
+    setCsvMessage(null);
+    setCsvErrors([]);
+    try {
+      const saved = await mutate("import-csv", { listId: list.id, csv: await file.text() }, "CSV processed. Review the import report below.");
+      const summary = saved && (saved as WorkspaceState & { importSummary?: { imported: number; skipped: number; errors: Array<{ line: number; reason: string }> } }).importSummary;
+      if (!summary) throw new Error("The import completed without a report. Refresh the list before continuing.");
+      setCsvMessage(`${summary.imported} lead${summary.imported === 1 ? "" : "s"} imported · ${summary.skipped} skipped.`);
+      setCsvErrors(summary.errors);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "CSV import failed.");
+    } finally {
+      setCsvBusy(false);
+    }
+  };
+  return <><PageHeading eyebrow="Rows that do work" title="Smart Lists are workflows." subtitle="Import people, research public company evidence, and enroll only qualified rows. Perpendicular never labels an email verified without a real verification provider."><button className="button-secondary" onClick={() => setShowList(true)}><Plus size={13} />Create list</button>{list ? <label className="button-secondary">{csvBusy ? "Importing…" : "Import CSV"}<input type="file" accept=".csv,text/csv" onChange={(event) => void importCsv(event)} disabled={csvBusy} hidden /></label> : null}<button className="button-primary" disabled={!list} onClick={() => setShowLead(true)}><Plus size={13} />Add lead</button></PageHeading>{actionError ? <div className="notice" role="alert">{actionError}</div> : null}{list ? <div className="panel"><PanelHeader title={list.name} caption={`${list.rows.length} rows · ${list.rows.filter((row) => row.status === "enriched").length} researched`}><div className="server-status"><span className="status-dot" />Public evidence only</div></PanelHeader>{csvMessage ? <div className="notice" role="status">{csvMessage}</div> : null}{csvErrors.length ? <div className="health-log"><div className="list-meta">Import issues</div>{csvErrors.slice(0, 12).map((error) => <div className="list-meta" key={`${error.line}-${error.reason}`}>Row {error.line}: {error.reason}</div>)}</div> : null}<div className="list-toolbar"><div className="toolbar-search"><SearchIcon /><input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search rows…" aria-label="Search smart list rows" /></div><div className="credit-preview"><Database size={13} />Research estimate: <strong>{filteredRows.length * 2} Data Credits</strong></div></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Person</th><th>Role / location</th><th>ICP score</th><th>Signal</th><th>Sequence</th><th>Actions</th></tr></thead><tbody>{filteredRows.map((row) => <SmartRowItem key={row.id} row={row} list={list} state={state} mutate={mutate} />)}</tbody></table>{!filteredRows.length ? <div className="empty-state">Add a lead to start this list.</div> : null}</div></div> : <div className="empty-state">Create a list, then add a lead or import one through the API.</div>}</>;
 }
 
 function SearchIcon() { return <span className="search-icon"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="m13 13 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg></span>; }

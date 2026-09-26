@@ -29,7 +29,8 @@ import { corsHeadersFor } from "@/lib/cors";
 import { recordUsage } from "@/lib/usage";
 import { createWidgetKey, widgetKeyHash } from "@/lib/widget";
 import { workspaceStateForClient } from "@/lib/workspace-view";
-import { normalizeDomain, outboundSafetyDecision, startOfLocalDay, validateOutboundSafetySettings } from "@/lib/outbound-safety";
+import { normalizeDomain, normalizeEmail, outboundSafetyDecision, startOfLocalDay, validateOutboundSafetySettings } from "@/lib/outbound-safety";
+import { parseLeadCsv, type LeadCsvError } from "@/lib/lead-csv";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -203,6 +204,7 @@ async function postWorkspace(request: Request): Promise<Response> {
     return json({ error: "You do not have permission to change outbound safety settings." }, { status: 403 });
   }
 
+  let importSummary: { imported: number; skipped: number; errors: LeadCsvError[] } | undefined;
   try {
     if (action === "bootstrap-workspace") {
       const goal = onboardingGoal(body.goal);
@@ -669,6 +671,37 @@ async function postWorkspace(request: Request): Promise<Response> {
           addActivity(state, { type: "lead", title: `${name} was imported`, detail: `${company} · ${list.name}`, });
           return state;
         }
+        case "import-csv": {
+          const list = state.lists.find((item) => item.id === String(body.listId || ""));
+          if (!list) throw new Error("List not found.");
+          const parsed = parseLeadCsv(String(body.csv || ""));
+          const errors = [...parsed.errors];
+          const seen = new Set<string>();
+          let imported = 0;
+          for (const record of parsed.records) {
+            const email = normalizeEmail(record.email);
+            const domain = email.split("@")[1] || "";
+            if (seen.has(email)) {
+              errors.push({ line: record.line, reason: "duplicate email in this CSV" });
+              continue;
+            }
+            seen.add(email);
+            if (state.suppressedEmails.includes(email) || state.outboundSafety.suppressedDomains.some((blocked) => domain === blocked || domain.endsWith(`.${blocked}`))) {
+              errors.push({ line: record.line, reason: "email or domain is suppressed for this workspace" });
+              continue;
+            }
+            if (state.lists.some((candidate) => candidate.rows.some((row) => row.email.toLowerCase() === email))) {
+              errors.push({ line: record.line, reason: "email already exists in this workspace" });
+              continue;
+            }
+            list.rows.unshift({ id: createId("row"), name: record.name.slice(0, 160), email, company: record.company.slice(0, 160), role: record.role.slice(0, 120), location: record.location.slice(0, 120), score: 50, status: "new", emailStatus: "unknown", intent: "Imported lead", companyInsight: "No public research captured yet", enrollmentStatus: "not enrolled", lastAction: "Imported from CSV" });
+            imported += 1;
+          }
+          list.updatedAt = timestamp();
+          importSummary = { imported, skipped: errors.length, errors: errors.slice(0, 50) };
+          if (imported) addActivity(state, { type: "lead", title: `${imported} lead${imported === 1 ? "" : "s"} imported into ${list.name}`, detail: `${errors.length} row${errors.length === 1 ? "" : "s"} skipped with validation or suppression errors` });
+          return state;
+        }
         case "create-sequence": {
           const name = String(body.name || "").trim();
           if (!name) throw new Error("Sequence name is required.");
@@ -897,7 +930,8 @@ async function postWorkspace(request: Request): Promise<Response> {
         if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(updated), persisted: true, error: "The research was saved, but its usage record could not be stored." }, { status: 503 });
       }
     }
-    return json(workspaceStateForClient(updated), { headers: rateLimitHeaders(identity.context) });
+    const responseState = workspaceStateForClient(updated);
+    return json(importSummary ? { ...responseState, importSummary } : responseState, { headers: rateLimitHeaders(identity.context) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Action failed.";
     return json({ error: message }, { status: 400 });

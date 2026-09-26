@@ -189,6 +189,18 @@ test("Smart List imports deduplicate across the workspace", () => {
   assert.match(route, /state\.lists\.some\(\(candidate\) => candidate\.id !== list\.id/);
 });
 
+test("Smart Lists expose a validated CSV import path", () => {
+  const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
+  const parser = readFileSync(join(root, "src/lib/lead-csv.ts"), "utf8");
+  const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
+  assert.match(route, /case "import-csv"/);
+  assert.match(route, /duplicate email in this CSV/);
+  assert.match(route, /email already exists in this workspace/);
+  assert.match(parser, /unclosed quoted field/);
+  assert.match(console, /Import CSV/);
+  assert.match(console, /importSummary/);
+});
+
 test("sequence enrollment is blocked until Gmail is connected", () => {
   const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
   const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
