@@ -29,7 +29,8 @@ This is the implementation truth for the supplied product and audit documents. A
 | Workspace JSON/CSV export and owner-confirmed deletion | Implemented; destructive E2E pending | `/api/workspace/export`, `/api/workspace/privacy` |
 | Webhook catalog and dead-letter replay controls | Implemented; provider E2E pending | `/api/ops`, Settings → Operations |
 | Operational health counts for dead letters, failed webhooks, and degraded integrations | Live and deployed | `/api/health`, required schema includes outbound send records |
-| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:4659dfd8…`, build `f46342b`, eight checks, 2026-09-26 |
+| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:17dde58b…`, build `ec8851b`, eight checks, 2026-09-26 |
+| Dell heartbeat trigger | Live and verified on the host | Root-owned `/usr/local/sbin/perpendicular-heartbeat`, `flock` lock, API-origin request, and successful authenticated tick on 2026-09-26 |
 | CI verification before image publication | Live | `.github/workflows/perpendicular-image.yml` runs check and production audit before publish |
 
 ## Dated launch-audit fixes
@@ -72,7 +73,8 @@ None of these are replaced with sample data or a green UI state.
 
 Read-only checks on 2026-09-26 found:
 
-- The live API is healthy on promoted immutable image `d2cd5e7` (`sha256:3f7238b91c3aa66aa4973e5749d1b72f2dda2ac3cc67ad28c2d571783b6cd792`); the production smoke suite passed all eight checks, including the public widget entry route.
+- The live API is healthy on promoted immutable image `ec8851b` (`sha256:17dde58b5991d253080c45a3ca032b3016f9170d04fa5b34ecd164a8dbd58ab3`); the production smoke suite passed all eight checks, including the public widget entry route.
+- The Dell host heartbeat is installed as a root-owned helper with a non-overlap lock and calls `https://perpendicular-api.bluebloodstudio.com/api/cron/heartbeat`; an authenticated tick returned successfully.
 - Dell reports all required workspace, platform, Gmail event/health, usage-ledger, and outbound-message tables present; schema health has no missing tables.
 - The API-key rate-limit table is applied additively on Dell; the transactional workspace write path, outbound safety guardrails, CSV lead import, and public widget are live on the promoted image.
 - Dell local backups exist and restore rehearsal passed, but the rclone configuration and offsite remote are absent.

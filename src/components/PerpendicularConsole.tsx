@@ -277,6 +277,7 @@ function SearchIcon() { return <span className="search-icon"><svg viewBox="0 0 2
 function SmartRowItem({ row, list, state, mutate }: { row: SmartRow; list: SmartList; state: WorkspaceState; mutate: Mutation }) {
   const sequence = state.sequences[0];
   const gmailConnected = state.integrations?.some((integration) => integration.provider === "gmail" && integration.status === "connected") === true;
+  const connectGmail = <a className="small-button" href={apiPath("/api/integrations/google/start")}><Mail size={11} />Connect Gmail</a>;
   const suppressed = state.suppressedEmails.includes(row.email.toLowerCase());
   const nextStepIndex = row.sequenceStepIndex || 0;
   const nextStep = sequence?.steps[nextStepIndex];
@@ -288,10 +289,12 @@ function SmartRowItem({ row, list, state, mutate }: { row: SmartRow; list: Smart
       ? <span className="small-button">No sequence</span>
       : completed
         ? <span className="small-button ready"><Check size={11} />Complete</span>
+        : row.status !== "enriched"
+          ? <span className="small-button">Research first</span>
         : row.enrollmentStatus !== "enrolled"
-          ? !gmailConnected ? <span className="small-button">Connect Gmail</span> : <button className="small-button" onClick={() => void mutate("enroll-row", { listId: list.id, rowId: row.id, sequenceId: sequence.id }, `${row.name} enrolled with reply-pause enabled.`)}><Send size={11} />Enroll</button>
+          ? !gmailConnected ? connectGmail : <button className="small-button" onClick={() => void mutate("enroll-row", { listId: list.id, rowId: row.id, sequenceId: sequence.id }, `${row.name} enrolled with reply-pause enabled.`)}><Send size={11} />Enroll</button>
           : !gmailConnected
-            ? <span className="small-button">Connect Gmail</span>
+            ? connectGmail
             : sequence.status !== "live"
               ? <span className="small-button">Activate sequence</span>
               : nextStep?.channel !== "Email"

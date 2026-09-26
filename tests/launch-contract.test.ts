@@ -20,6 +20,19 @@ test("the launch database contract includes distributed API-key rate limiting", 
   assert.match(health, /perpendicular_rate_limits/);
 });
 
+test("Dell heartbeat installation targets the durable API without putting the secret in cron", () => {
+  const installer = readFileSync(join(root, "deploy/dell/install-heartbeat-cron.sh"), "utf8");
+  const helper = readFileSync(join(root, "deploy/dell/perpendicular-heartbeat.sh"), "utf8");
+  const deployReadme = readFileSync(join(root, "deploy/dell/README.md"), "utf8");
+  assert.match(installer, /usr\/local\/sbin\/perpendicular-heartbeat/);
+  assert.match(installer, /crontab/);
+  assert.doesNotMatch(installer, /Authorization: Bearer/);
+  assert.match(helper, /CRON_SECRET/);
+  assert.match(helper, /api\/cron\/heartbeat/);
+  assert.match(deployReadme, /perpendicular-api\.bluebloodstudio\.com\/api\/cron\/heartbeat/);
+  assert.doesNotMatch(deployReadme, /perpendicular\.bluebloodstudio\.com\/api\/cron\/heartbeat/);
+});
+
 test("the launch database contract persists idempotent outbound sequence sends", () => {
   const migration = readFileSync(join(root, "db/005_outbound_messages.sql"), "utf8");
   const health = readFileSync(join(root, "src/app/api/health/route.ts"), "utf8");

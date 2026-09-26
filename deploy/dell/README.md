@@ -45,11 +45,13 @@ ALLOW_LOCAL_LLM_FALLBACK=false
 6. Attach the container to the existing Blueblood Docker network so `postgres` resolves. If the current compose project uses a different network name, use the real name from `docker network ls`.
 7. Add a Caddy route for the chosen host, for example `perpendicular.bluebloodstudio.com`, proxying to the container port.
 8. Add the matching Cloudflare Tunnel ingress and DNS route.
-9. Add a single host cron entry that runs every five minutes during active hours:
+9. Add a single host cron entry that runs every five minutes during active hours. The heartbeat is an API operation, so call the Dell API origin directly; the web origin is the Vercel frontend and does not carry the Dell runtime environment:
 
 ```cron
-*/5 7-22 * * * curl -fsS -X POST https://perpendicular.bluebloodstudio.com/api/cron/heartbeat -H "Authorization: Bearer <secret>" -H "X-Company-ID: blueblood-demo" >/dev/null
+*/5 7-22 * * * curl -fsS -X POST https://perpendicular-api.bluebloodstudio.com/api/cron/heartbeat -H "Authorization: Bearer <secret>" >/dev/null
 ```
+
+Use `deploy/dell/install-heartbeat-cron.sh` to install this entry from `/opt/blueblood/perpendicular.env` without copying the secret into the crontab. The script uses `flock` so a slow Ollama run cannot overlap with the next tick.
 
 Install `deploy/dell/backup-postgres.sh` as `/opt/blueblood/backup-postgres.sh` with root ownership. Run it daily from root cron. It creates a verified custom-format dump of only the dedicated `perpendicular` database using the Dell's `blueblood` Postgres role by default, keeps fourteen local days, and copies to `PERPENDICULAR_BACKUP_REMOTE` when configured with rclone. A launch gate is not complete until one dump has been restored into a clean, separately named database and the offsite copy has been retrieved successfully.
 
