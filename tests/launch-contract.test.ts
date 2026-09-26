@@ -193,12 +193,23 @@ test("Smart Lists expose a validated CSV import path", () => {
   const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
   const parser = readFileSync(join(root, "src/lib/lead-csv.ts"), "utf8");
   const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
+  const listsView = console.slice(console.indexOf("function ListsView"), console.indexOf("function SearchIcon"));
   assert.match(route, /case "import-csv"/);
   assert.match(route, /duplicate email in this CSV/);
   assert.match(route, /email already exists in this workspace/);
   assert.match(parser, /unclosed quoted field/);
   assert.match(console, /Import CSV/);
   assert.match(console, /importSummary/);
+  assert.match(console, /<ListsView state=\{state\} mutate=\{mutate\}/);
+  assert.doesNotMatch(listsView, /window\.location\.reload\(\)/);
+});
+
+test("Workbench runs expose persisted output and trace inspection", () => {
+  const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
+  assert.match(console, /function RunRow/);
+  assert.match(console, /run\.output/);
+  assert.match(console, /run\.trace/);
+  assert.match(console, /Inspect/);
 });
 
 test("Smart List scores expose their actual reasons", () => {
