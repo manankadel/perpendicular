@@ -33,7 +33,7 @@ export function corsHeadersFor(request?: Request) {
     "access-control-allow-origin": allowOrigin,
     "access-control-allow-credentials": "true",
     "access-control-allow-headers": "authorization, content-type, x-company-id, x-organization-slug, x-api-key",
-    "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
+    "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
     vary: "Origin",
   };
 }

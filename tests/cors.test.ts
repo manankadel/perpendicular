@@ -25,6 +25,7 @@ test("echoes an allowed request origin for credentialed CORS", () => {
     headers: { origin: "https://perpendicular-nine.vercel.app" },
   });
   assert.equal(corsHeadersFor(request)["access-control-allow-origin"], "https://perpendicular-nine.vercel.app");
+  assert.match(corsHeadersFor(request)["access-control-allow-methods"], /\bPATCH\b/);
   assert.equal(corsJson({ ok: true }, undefined, request).headers.get("access-control-allow-origin"), "https://perpendicular-nine.vercel.app");
 });
 
