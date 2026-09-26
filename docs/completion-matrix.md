@@ -23,6 +23,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Smart Lists, public research, dedupe, credit decrement, sequence enrollment | Live at launch scope | Workspace actions and UI |
 | People and Lead Data records with explicit public qualification and source runs | Live at launch scope | `create-person`, `qualify-person`, `create-lead-source`, `run-lead-source`, People and Lead Data views |
 | Lite CRM pipeline with value, stages, owners, next actions, close dates, sources, and stage history | Live at launch scope | `create-deal`, `update-deal`, Pipeline view, dashboard pipeline metrics, additive workspace migration |
+| Pipeline REST and MCP resources with shared persistence | Live at launch scope | `/api/deals`, `/api/deals/{dealId}`, MCP `deal_create`/`deal_update`, shared `deal-runtime` used by UI, REST, and MCP |
 | Draft sequences with activation, explicit Gmail first-step send, reply-pause/suppression guardrails, outbound daily limits/time windows/weekend rules/domain suppression, and durable send idempotency | Live at launch scope | `activate-sequence`, `send-sequence-step`, `Outbound safety` in Settings, `db/005_outbound_messages.sql`, Gmail reply handling |
 | Ticket queue, priority SLA, resolution, CSAT | Live at launch scope | `ticketSlaMinutes`, inbox UI, workspace actions |
 | Grounded support reply drafts with persisted citations and explicit human-send boundary | Live at launch scope | `draft-ticket-reply`, Inbox reply draft action, ticket `replyDraft` state |
@@ -42,7 +43,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Webhook catalog and dead-letter replay controls | Implemented; provider E2E pending | `/api/ops`, Settings → Operations |
 | Operational health counts for dead letters, failed webhooks, and degraded integrations | Live and deployed | `/api/health`, required schema includes outbound send records |
 | Dell local backup schedule, clean-database restore rehearsal, and off-machine copy | Live | Root cron at 02:15, verified custom-format dump, restore into `perpendicular_restore_check` with 13 platform tables, and Mac launchd pull of `/opt/blueblood/backups/perpendicular` via the existing least-privilege sudo rule |
-| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:8f5e6d9d6ad0b08b78c7d237871008800537245e9b3de320fa42212078748109`, build `b626025`, eight checks, 2026-09-27 |
+| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:ba51c0e2ebac38979012c029810f54ecff79a9fbf4fee8d5e8f0207316df5192`, build `1ed3856`, eight checks, 2026-09-27 |
 | Dell heartbeat trigger | Live and verified on the host | Root-owned `/usr/local/sbin/perpendicular-heartbeat`, `flock` lock, API-origin request, and successful authenticated tick on 2026-09-26 |
 | CI verification before image publication | Live | `.github/workflows/perpendicular-image.yml` runs check and production audit before publish |
 
@@ -84,9 +85,9 @@ None of these are replaced with sample data or a green UI state.
 
 Read-only checks on 2026-09-27 found:
 
-- The live API is healthy on promoted immutable image `b626025` (`sha256:8f5e6d9d6ad0b08b78c7d237871008800537245e9b3de320fa42212078748109`); the production smoke suite passed all eight checks, including the public widget entry route and the public site chat route being present in OpenAPI.
+- The live API is healthy on promoted immutable image `1ed3856` (`sha256:ba51c0e2ebac38979012c029810f54ecff79a9fbf4fee8d5e8f0207316df5192`); the production smoke suite passed all eight checks, and live OpenAPI exposes `/api/deals`, `/api/deals/{dealId}`, `deal_create`, and `deal_update`.
 - The authenticated browser session reaches the live workbench, completed a real mission through Dell → Ollama → Postgres, answered a real employee chat, approved the mission, generated grounded content, and created/enriched a Smart List row.
-- The verified UI is live on the Git-connected production deployment from `b626025` (`perpendicular.bluebloodstudio.com`, with `perpendicular-nine.vercel.app` retained as an alias); the production target is `READY` with the expected Company / Chat / Scheduled / People / Lead Data / Campaigns / Keywords / Inbound / Apps navigation.
+- The verified UI is live on the Git-connected production deployment (`perpendicular.bluebloodstudio.com`, with `perpendicular-nine.vercel.app` retained as an alias); the production target is `READY` with the expected Company / Chat / Scheduled / People / Lead Data / Pipeline / Campaigns / Keywords / Inbound / Apps navigation.
 - The onboarding proof now attaches the scored first run to the first real mission, so opening the workbench produces a reviewable mission instead of an empty queue.
 - The compatibility migration was exercised against the existing `blueblood-studio` workspace: the Dell row now persists `seq-onboarding-blueblood-studio` with all five draft steps, without resetting the workspace.
 - The Dell host heartbeat is installed as a root-owned helper with a non-overlap lock and calls `https://perpendicular-api.bluebloodstudio.com/api/cron/heartbeat`; an authenticated tick returned successfully.
