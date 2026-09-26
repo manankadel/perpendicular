@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { databaseConfigured, getDatabase } from "@/lib/database";
+import { corsHeadersFor } from "@/lib/cors";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,7 +21,11 @@ const requiredTables = [
   "perpendicular_rate_limits",
 ] as const;
 
-export async function GET() {
+export function OPTIONS(request: Request) {
+  return new Response(null, { status: 204, headers: corsHeadersFor(request) });
+}
+
+export async function GET(request: Request) {
   const database = await getDatabase();
   const production = process.env.NODE_ENV === "production";
   const gmailOAuthConfigured = Boolean(
@@ -87,5 +92,5 @@ export async function GET() {
       backupOffsiteConfigured,
     },
     operations,
-  }, { status: production && !ok ? 503 : 200 });
+  }, { status: production && !ok ? 503 : 200, headers: corsHeadersFor(request) });
 }

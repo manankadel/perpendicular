@@ -58,6 +58,12 @@ test("health reports provider configuration gaps without exposing secrets", () =
   assert.match(healthRoute, /configurationGaps/);
 });
 
+test("browser health polling is available to the configured web origins", () => {
+  assert.match(healthRoute, /corsHeadersFor/);
+  assert.match(healthRoute, /OPTIONS\(request: Request\)/);
+  assert.match(healthRoute, /headers: corsHeadersFor\(request\)/);
+});
+
 test("health exposes backup readiness without treating an absent remote as a secret", () => {
   assert.match(healthRoute, /backupOffsiteConfigured/);
   assert.match(healthRoute, /offsite_backup_remote/);
