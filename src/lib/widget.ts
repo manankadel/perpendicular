@@ -1,4 +1,4 @@
-import { getWorkspace } from "@/lib/server-store";
+import { findWorkspace } from "@/lib/server-store";
 import { randomToken, sha256 } from "@/lib/security";
 import type { Employee, WorkspaceState } from "@/lib/domain";
 
@@ -29,8 +29,8 @@ export function widgetEmployee(state: WorkspaceState): Employee | null {
 
 export async function authenticateWidget(workspaceId: string, key: string) {
   if (!workspaceId || !key.startsWith(widgetKeyPrefix) || key.length < 20) return null;
-  const state = await getWorkspace(workspaceId);
+  const state = await findWorkspace(workspaceId);
+  if (!state) return null;
   if (!state.widget.enabled || !state.widget.publicKeyHash || widgetKeyHash(key) !== state.widget.publicKeyHash) return null;
   return { state, employee: widgetEmployee(state) };
 }
-

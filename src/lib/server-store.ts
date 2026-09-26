@@ -124,6 +124,22 @@ export async function getWorkspace(companyId = defaultCompanyId): Promise<Worksp
   return initial;
 }
 
+export async function findWorkspace(companyId: string): Promise<WorkspaceState | null> {
+  const database = await getPool();
+  if (database) {
+    const result = await database.query<{ state: WorkspaceState }>(
+      "select state from perpendicular_workspace_state where company_id = $1",
+      [companyId],
+    );
+    const raw = result.rows[0]?.state;
+    return raw ? normalizeWorkspaceState(raw, companyId) : null;
+  }
+
+  if (!allowFileFallback()) return null;
+  const existing = await readFileState(companyId);
+  return existing ? normalizeWorkspaceState(existing, companyId) : null;
+}
+
 export async function saveWorkspace(companyId: string, state: WorkspaceState) {
   const database = await getPool();
   if (database) {

@@ -6,6 +6,7 @@ import { join } from "node:path";
 const root = process.cwd();
 const domain = readFileSync(join(root, "src/lib/domain.ts"), "utf8");
 const widget = readFileSync(join(root, "src/lib/widget.ts"), "utf8");
+const serverStore = readFileSync(join(root, "src/lib/server-store.ts"), "utf8");
 const config = readFileSync(join(root, "src/app/api/widget/[workspaceId]/config/route.ts"), "utf8");
 const chat = readFileSync(join(root, "src/app/api/widget/[workspaceId]/chat/route.ts"), "utf8");
 const workspace = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
@@ -29,6 +30,8 @@ test("public widget has persisted workspace-scoped state", () => {
 test("widget access is capability-keyed and not an authenticated workspace read", () => {
   assert.match(widget, /widgetKeyPrefix/);
   assert.match(widget, /state\.widget\.enabled/);
+  assert.match(widget, /findWorkspace\(workspaceId\)/);
+  assert.match(serverStore, /export async function findWorkspace/);
   assert.match(widget, /widgetKeyHash\(key\)/);
   assert.match(config, /x-perpendicular-widget-key/);
   assert.match(config, /status: 401/);
