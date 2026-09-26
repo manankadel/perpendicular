@@ -3,7 +3,7 @@ import "server-only";
 import { getGmailMessage, listGmailHistory, listRecentGmailMessages } from "@/lib/gmail";
 import { getIntegrationMetadata, listIntegrationSummaries, markIntegrationSynced, updateIntegrationMetadata } from "@/lib/integration-store";
 import { upsertGmailMessage } from "@/lib/inbox-store";
-import { addActivity } from "@/lib/domain";
+import { addActivity, createId, ticketSlaMinutes, timestamp, type Ticket } from "@/lib/domain";
 import { updateWorkspace } from "@/lib/server-store";
 
 function emailAddress(value: string) {
@@ -41,6 +41,7 @@ export async function syncGmailWorkspace(workspaceId: string, requestedHistoryId
   const gmail = summaries.find((integration) => integration.provider === "gmail");
   const repliedEmails = new Set<string>();
   const messageHistoryIds: string[] = [];
+  const inboundMessages: Array<{ id: string; sender: string; subject: string; bodyText: string; receivedAt: string }> = [];
   let insertedCount = 0;
   for (const messageId of [...new Set(messageIds)]) {
     const message = await getGmailMessage(workspaceId, messageId);
@@ -59,11 +60,44 @@ export async function syncGmailWorkspace(workspaceId: string, requestedHistoryId
       metadata: { messageIdHeader: message.messageIdHeader, historyId: message.historyId },
     });
     if (persisted.inserted) insertedCount += 1;
-    if (isInbound) repliedEmails.add(sender);
+    if (isInbound) {
+      repliedEmails.add(sender);
+      if (persisted.inserted) inboundMessages.push({ id: message.id, sender, subject: message.subject, bodyText: message.bodyText, receivedAt: message.date });
+    }
     if (message.historyId) messageHistoryIds.push(message.historyId);
   }
 
   const updated = await updateWorkspace(workspaceId, (workspace) => {
+    const existingInboundIds = new Set(workspace.tickets.map((ticket) => ticket.sourceProviderMessageId).filter((id): id is string => Boolean(id)));
+    for (const message of inboundMessages) {
+      if (existingInboundIds.has(message.id)) continue;
+      const priority: Ticket["priority"] = /\b(urgent|outage|down|security)\b/i.test(`${message.subject} ${message.bodyText}`)
+        ? "urgent"
+        : /\b(blocked|cannot|can't|error|failed|failure)\b/i.test(`${message.subject} ${message.bodyText}`)
+          ? "high"
+          : "normal";
+      const createdAt = message.receivedAt || timestamp();
+      const slaDueAt = new Date(Date.now() + 1000 * 60 * ticketSlaMinutes(priority)).toISOString();
+      workspace.tickets.unshift({
+        id: createId("ticket"),
+        subject: message.subject || `Inbound message from ${message.sender}`,
+        requester: message.sender,
+        message: message.bodyText,
+        priority,
+        status: "open",
+        createdAt,
+        slaDueAt,
+        assignee: workspace.employees.find((employee) => employee.department === "Support" && employee.status === "live")?.name || "Rhea",
+        csat: null,
+        requesterEmail: message.sender,
+        sourceProviderMessageId: message.id,
+        replyDraft: null,
+        replyCitations: [],
+        replyProviderMessageId: null,
+        replySentAt: null,
+      });
+      addActivity(workspace, { type: "ticket", title: "Inbound Gmail message opened a ticket", detail: `${message.sender} · ${priority} priority · SLA running` });
+    }
     for (const list of workspace.lists) for (const row of list.rows) {
       if (!repliedEmails.has(row.email.toLowerCase()) || row.enrollmentStatus !== "enrolled") continue;
       const sequenceName = row.lastAction?.startsWith("Enrolled in ") ? row.lastAction.slice("Enrolled in ".length) : null;

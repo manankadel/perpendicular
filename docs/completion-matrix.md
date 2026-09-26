@@ -36,7 +36,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Workspace Apps execute a saved task through a local employee | Live at launch scope | `run-app`, `/api/apps/{appId}/run`, MCP `app_run`, persisted output/score/trace, Apps view |
 | Onboarding creates a ready lead workspace and grounded public operator page | Live at launch scope | `buildOnboardingArtifacts`, additive legacy migration, `/site/{slug}` and `/api/site/{slug}/chat` |
 | Gmail OAuth, encrypted refresh tokens, sync, watch renewal, webhook dedupe | Implemented; provider E2E pending | Gmail routes and integration health tables |
-| Persisted Gmail inbox message read surface | Live in code; provider E2E pending | `/api/inbox`, Inbox view, `inbox-store.ts` |
+| Persisted Gmail inbox plus inbound ticket creation | Live in code; provider E2E pending | `/api/inbox`, Gmail sync, Inbox view, `inbox-store.ts`; new inbound messages create deduplicated SLA tickets |
 | Capability-keyed inbound website widget with persisted visitor conversations | Live in code; deployed provider/model evidence pending | `/widget/{workspaceId}`, `/api/widget/{workspaceId}/chat`, Inbox → Website conversations |
 | MCP parity for workspace read, employee chat/run, integration list | Live | `/api/mcp` and shared workspace persistence |
 | API keys hashed, scoped, revocable, rate-limited | Live | `api-keys.ts`, rate-limit tests |

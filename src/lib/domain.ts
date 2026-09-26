@@ -195,6 +195,7 @@ export type Ticket = {
   replyDraft?: string | null;
   replyCitations?: string[];
   requesterEmail?: string | null;
+  sourceProviderMessageId?: string | null;
   replyProviderMessageId?: string | null;
   replySentAt?: string | null;
 };
@@ -775,6 +776,7 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
       replyDraft: typeof ticket.replyDraft === "string" ? ticket.replyDraft : null,
       replyCitations: Array.isArray(ticket.replyCitations) ? ticket.replyCitations.filter((citation): citation is string => typeof citation === "string") : [],
       requesterEmail: typeof ticket.requesterEmail === "string" ? ticket.requesterEmail : null,
+      sourceProviderMessageId: typeof ticket.sourceProviderMessageId === "string" ? ticket.sourceProviderMessageId : null,
       replyProviderMessageId: typeof ticket.replyProviderMessageId === "string" ? ticket.replyProviderMessageId : null,
       replySentAt: typeof ticket.replySentAt === "string" ? ticket.replySentAt : null,
     })) : [],

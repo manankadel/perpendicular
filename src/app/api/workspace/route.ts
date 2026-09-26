@@ -1368,6 +1368,7 @@ async function postWorkspace(request: Request): Promise<Response> {
             assignee: "Rhea",
             csat: null,
             requesterEmail: String(body.requesterEmail || "").trim().toLowerCase() || null,
+            sourceProviderMessageId: null,
             replyProviderMessageId: null,
             replySentAt: null,
           };
