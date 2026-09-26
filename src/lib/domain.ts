@@ -121,6 +121,7 @@ export type SmartRow = {
   role: string;
   location: string;
   score: number;
+  scoreReasons?: string[];
   status: "new" | "enriched";
   emailStatus: "unknown" | "verified" | "risky";
   intent: string;

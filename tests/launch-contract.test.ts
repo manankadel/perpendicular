@@ -201,6 +201,17 @@ test("Smart Lists expose a validated CSV import path", () => {
   assert.match(console, /importSummary/);
 });
 
+test("Smart List scores expose their actual reasons", () => {
+  const domain = readFileSync(join(root, "src/lib/domain.ts"), "utf8");
+  const scoring = readFileSync(join(root, "src/lib/lead-scoring.ts"), "utf8");
+  const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
+  const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
+  assert.match(domain, /scoreReasons\?: string\[\]/);
+  assert.match(scoring, /Public\/company signals/);
+  assert.match(route, /scoreLead/);
+  assert.match(console, /scoreReasons/);
+});
+
 test("sequence enrollment is blocked until Gmail is connected", () => {
   const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
   const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");

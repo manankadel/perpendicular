@@ -31,6 +31,7 @@ import { createWidgetKey, widgetKeyHash } from "@/lib/widget";
 import { workspaceStateForClient } from "@/lib/workspace-view";
 import { normalizeDomain, normalizeEmail, outboundSafetyDecision, startOfLocalDay, validateOutboundSafetySettings } from "@/lib/outbound-safety";
 import { parseLeadCsv, type LeadCsvError } from "@/lib/lead-csv";
+import { scoreLead } from "@/lib/lead-scoring";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -666,7 +667,9 @@ async function postWorkspace(request: Request): Promise<Response> {
           if (state.suppressedEmails.includes(email)) throw new Error("This address is suppressed for the workspace.");
           if (list.rows.some((row) => row.email.toLowerCase() === email)) throw new Error("This email is already in the list.");
           if (state.lists.some((candidate) => candidate.id !== list.id && candidate.rows.some((row) => row.email.toLowerCase() === email))) throw new Error("This email already exists in another Smart List in this workspace.");
-          list.rows.unshift({ id: createId("row"), name, email, company, role: String(body.role || "Unknown"), location: String(body.location || "Unknown"), score: 50, status: "new", emailStatus: "unknown", intent: "Imported lead", companyInsight: "No public research captured yet", enrollmentStatus: "not enrolled", lastAction: "Imported by workspace operator" });
+          const role = String(body.role || "Unknown");
+          const score = scoreLead({ email, role, company });
+          list.rows.unshift({ id: createId("row"), name, email, company, role, location: String(body.location || "Unknown"), score: score.score, scoreReasons: score.reasons, status: "new", emailStatus: "unknown", intent: score.intent, companyInsight: "No public research captured yet", enrollmentStatus: "not enrolled", lastAction: "Imported by workspace operator" });
           list.updatedAt = timestamp();
           addActivity(state, { type: "lead", title: `${name} was imported`, detail: `${company} · ${list.name}`, });
           return state;
@@ -694,7 +697,8 @@ async function postWorkspace(request: Request): Promise<Response> {
               errors.push({ line: record.line, reason: "email already exists in this workspace" });
               continue;
             }
-            list.rows.unshift({ id: createId("row"), name: record.name.slice(0, 160), email, company: record.company.slice(0, 160), role: record.role.slice(0, 120), location: record.location.slice(0, 120), score: 50, status: "new", emailStatus: "unknown", intent: "Imported lead", companyInsight: "No public research captured yet", enrollmentStatus: "not enrolled", lastAction: "Imported from CSV" });
+            const score = scoreLead({ email, role: record.role, company: record.company });
+            list.rows.unshift({ id: createId("row"), name: record.name.slice(0, 160), email, company: record.company.slice(0, 160), role: record.role.slice(0, 120), location: record.location.slice(0, 120), score: score.score, scoreReasons: score.reasons, status: "new", emailStatus: "unknown", intent: score.intent, companyInsight: "No public research captured yet", enrollmentStatus: "not enrolled", lastAction: "Imported from CSV" });
             imported += 1;
           }
           list.updatedAt = timestamp();
@@ -797,7 +801,10 @@ async function postWorkspace(request: Request): Promise<Response> {
             state.workspace.dataCredits.remaining -= 2;
             row.status = "enriched";
             row.emailStatus = "unknown";
-            row.score = Math.min(98, row.score + 5);
+            const score = scoreLead({ email: row.email, role: row.role, company: row.company, researchText: research.text, idealCustomer: state.profile.idealCustomer });
+            row.score = score.score;
+            row.scoreReasons = score.reasons;
+            row.intent = score.intent;
             row.companyInsight = research.insight;
             row.lastAction = `Public website researched · ${research.url}`;
           }
