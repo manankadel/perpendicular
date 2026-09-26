@@ -240,21 +240,27 @@ function SmartRowItem({ row, list, state, mutate }: { row: SmartRow; list: Smart
   const sequence = state.sequences[0];
   const gmailConnected = state.integrations?.some((integration) => integration.provider === "gmail" && integration.status === "connected") === true;
   const suppressed = state.suppressedEmails.includes(row.email.toLowerCase());
-  const sent = Boolean(row.lastProviderMessageId);
+  const nextStepIndex = row.sequenceStepIndex || 0;
+  const nextStep = sequence?.steps[nextStepIndex];
+  const completed = Boolean(sequence && nextStepIndex >= sequence.steps.length);
+  const hasSentStep = Boolean(row.lastProviderMessageId);
   const sequenceAction = suppressed
     ? <span className="small-button">Blocked</span>
     : !sequence
       ? <span className="small-button">No sequence</span>
-      : sent
-        ? <span className="small-button ready"><Check size={11} />Sent</span>
+      : completed
+        ? <span className="small-button ready"><Check size={11} />Complete</span>
         : row.enrollmentStatus !== "enrolled"
           ? !gmailConnected ? <span className="small-button">Connect Gmail</span> : <button className="small-button" onClick={() => void mutate("enroll-row", { listId: list.id, rowId: row.id, sequenceId: sequence.id }, `${row.name} enrolled with reply-pause enabled.`)}><Send size={11} />Enroll</button>
           : !gmailConnected
             ? <span className="small-button">Connect Gmail</span>
             : sequence.status !== "live"
               ? <span className="small-button">Activate sequence</span>
-              : <button className="small-button" onClick={() => void mutate("send-sequence-step", { listId: list.id, rowId: row.id, sequenceId: sequence.id, stepIndex: row.sequenceStepIndex || 0 }, `${row.name} received the approved first email.`)}><Send size={11} />Send approved email</button>;
-  return <tr><td><div className="row-name"><div className="row-initial">{initials(row.name)}</div><div><strong>{row.name}</strong><div className="row-company">{row.company} · {row.email}</div></div></div></td><td><strong>{row.role}</strong><div className="row-company">{row.location}</div></td><td className="score-cell">{row.score}</td><td><div>{row.intent}</div><div className={`row-company ${row.emailStatus === "verified" ? "verified" : "unknown"}`}>{row.emailStatus === "verified" ? "Verified email" : "Needs enrichment"}</div></td><td><span className={suppressed ? "unknown" : sent ? "verified" : row.enrollmentStatus === "enrolled" ? "verified" : "unknown"}>{suppressed ? "suppressed" : sent ? "sent" : row.enrollmentStatus}</span></td><td><div className="row-actions">{suppressed ? <button className="small-button" onClick={() => void mutate("unsuppress-row", { listId: list.id, rowId: row.id }, `${row.name} can be enrolled again.`)}>Unsuppress</button> : <button className="small-button" onClick={() => void mutate("suppress-row", { listId: list.id, rowId: row.id }, `${row.name} suppressed for this workspace.`)}>Suppress</button>}{row.status === "enriched" ? <span className="small-button ready"><Check size={11} />Ready</span> : <button className="small-button" onClick={() => void mutate("enrich-row", { listId: list.id, rowId: row.id }, `${row.name} enriched. 2 Data Credits used.`)}><Zap size={11} />Enrich</button>}{sequenceAction}</div></td></tr>;
+              : nextStep?.channel !== "Email"
+                ? <span className="small-button">Step {nextStepIndex + 1}: {nextStep?.channel || "Manual"}</span>
+                : <button className="small-button" onClick={() => void mutate("send-sequence-step", { listId: list.id, rowId: row.id, sequenceId: sequence.id, stepIndex: nextStepIndex }, `${row.name} received the approved sequence email.`)}><Send size={11} />{hasSentStep ? `Send step ${nextStepIndex + 1}` : "Send approved email"}</button>;
+  const listStatus = suppressed ? "suppressed" : completed ? "complete" : hasSentStep ? `step ${nextStepIndex} sent` : row.enrollmentStatus;
+  return <tr><td><div className="row-name"><div className="row-initial">{initials(row.name)}</div><div><strong>{row.name}</strong><div className="row-company">{row.company} · {row.email}</div></div></div></td><td><strong>{row.role}</strong><div className="row-company">{row.location}</div></td><td className="score-cell">{row.score}</td><td><div>{row.intent}</div><div className={`row-company ${row.emailStatus === "verified" ? "verified" : "unknown"}`}>{row.emailStatus === "verified" ? "Verified email" : "Needs enrichment"}</div></td><td><span className={suppressed ? "unknown" : completed || hasSentStep ? "verified" : "unknown"}>{listStatus}</span></td><td><div className="row-actions">{suppressed ? <button className="small-button" onClick={() => void mutate("unsuppress-row", { listId: list.id, rowId: row.id }, `${row.name} can be enrolled again.`)}>Unsuppress</button> : <button className="small-button" onClick={() => void mutate("suppress-row", { listId: list.id, rowId: row.id }, `${row.name} suppressed for this workspace.`)}>Suppress</button>}{row.status === "enriched" ? <span className="small-button ready"><Check size={11} />Ready</span> : <button className="small-button" onClick={() => void mutate("enrich-row", { listId: list.id, rowId: row.id }, `${row.name} enriched. 2 Data Credits used.`)}><Zap size={11} />Enrich</button>}{sequenceAction}</div></td></tr>;
 }
 
 function SequencesView({ state, mutate, setShowSequence }: { state: WorkspaceState; mutate: Mutation; setShowSequence: (show: boolean) => void }) {
