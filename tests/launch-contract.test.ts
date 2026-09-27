@@ -151,7 +151,9 @@ test("Google sign-in stays product-owned and uses a safe return path", () => {
   assert.match(route, /PERPENDICULAR_WEB_ORIGIN/);
   assert.match(route, /redirect: "manual"/);
   assert.match(route, /Domain=\.bluebloodstudio\.com/);
+  assert.match(route, /mfaRedirect/);
   assert.match(login, /api\/auth\/google\/start/);
+  assert.match(readFileSync(join(root, "src/app/api/auth/google/mfa/route.ts"), "utf8"), /perpendicular_google_mfa/);
 });
 
 test("the product-owned auth surface supports self-serve account creation", () => {

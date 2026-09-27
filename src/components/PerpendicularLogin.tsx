@@ -14,7 +14,7 @@ type LoginResponse = {
   error?: string;
 };
 
-export default function PerpendicularLogin({ next, initialError }: { next: string; initialError?: string }) {
+export default function PerpendicularLogin({ next, initialError, initialGoogleMfa = false }: { next: string; initialError?: string; initialGoogleMfa?: boolean }) {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,7 +22,8 @@ export default function PerpendicularLogin({ next, initialError }: { next: strin
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [code, setCode] = useState("");
-  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [mfaToken, setMfaToken] = useState<string | null>(initialGoogleMfa ? "google-cookie" : null);
+  const [googleMfa, setGoogleMfa] = useState(initialGoogleMfa);
   const [mfaType, setMfaType] = useState<"totp" | "backup">("totp");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(initialError || null);
@@ -44,7 +45,7 @@ export default function PerpendicularLogin({ next, initialError }: { next: strin
     try {
       const path = mfaToken ? "/api/auth/mfa" : mode === "signup" ? "/api/auth/signup" : "/api/auth/login";
       const payload = mfaToken
-        ? { mfaToken, code, type: mfaType }
+        ? googleMfa ? { code, type: mfaType } : { mfaToken, code, type: mfaType }
         : mode === "signup"
           ? { email, password, firstName, lastName }
           : { email, password };
@@ -58,6 +59,7 @@ export default function PerpendicularLogin({ next, initialError }: { next: strin
       if (!response.ok) throw new Error(data.message || "Sign-in failed. Check your details and try again.");
       if (data.requiresMfa && data.mfaToken) {
         setMfaToken(data.mfaToken);
+        setGoogleMfa(false);
         setCode("");
         return;
       }
@@ -80,6 +82,7 @@ export default function PerpendicularLogin({ next, initialError }: { next: strin
   const switchMode = (nextMode: "login" | "signup") => {
     setMode(nextMode);
     setMfaToken(null);
+    setGoogleMfa(false);
     setCode("");
     setError(null);
   };

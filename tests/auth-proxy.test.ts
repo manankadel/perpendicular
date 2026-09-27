@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { getSetCookieHeaders, proxyIdentityRequest, safeReturnPath, sanitizeAuthPayload } from "../src/lib/auth-proxy";
 import { GET as startGoogle } from "../src/app/api/auth/google/start/route";
+import { GET as handoffGoogleMfa } from "../src/app/api/auth/google/mfa/route";
 
 test("only accepts same-site relative return paths", () => {
   assert.equal(safeReturnPath("/"), "/");
@@ -54,5 +55,21 @@ test("Google OAuth starts at Google without exposing the identity portal hop", a
     assert.match(response.headers.get("set-cookie") || "", /Domain=\.bluebloodstudio\.com/);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("Google MFA returns to the product and keeps the challenge in an HttpOnly cookie", async () => {
+  const originalWebOrigin = process.env.PERPENDICULAR_WEB_ORIGIN;
+  process.env.PERPENDICULAR_WEB_ORIGIN = "https://perpendicular.bluebloodstudio.com";
+  try {
+    const response = await handoffGoogleMfa(new Request("https://perpendicular-api.bluebloodstudio.com/api/auth/google/mfa?mfa=signed-challenge&next=https%3A%2F%2Fperpendicular.bluebloodstudio.com%2Fconsole"));
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get("location"), "https://perpendicular.bluebloodstudio.com/login?next=%2Fconsole&google_mfa=1");
+    assert.match(response.headers.get("set-cookie") || "", /perpendicular_google_mfa=signed-challenge/);
+    assert.match(response.headers.get("set-cookie") || "", /HttpOnly/);
+    assert.match(response.headers.get("set-cookie") || "", /Path=\/api\/auth/);
+  } finally {
+    if (originalWebOrigin === undefined) delete process.env.PERPENDICULAR_WEB_ORIGIN;
+    else process.env.PERPENDICULAR_WEB_ORIGIN = originalWebOrigin;
   }
 });
