@@ -592,7 +592,12 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
     }
     return normalizedEmployee;
   });
-  const documents = Array.isArray(legacy.documents) ? legacy.documents : [];
+  const documents = Array.isArray(legacy.documents)
+    ? legacy.documents.map((document) => ({
+        ...document,
+        employeeIds: Array.isArray(document.employeeIds) ? document.employeeIds.filter((employeeId): employeeId is string => typeof employeeId === "string") : [],
+      }))
+    : [];
   const onboarding = {
     ...createOnboardingState(employees.length ? "completed" : "not_started"),
     ...(state.workspace.onboarding || {}),

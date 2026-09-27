@@ -211,6 +211,23 @@ test("existing onboarding workspaces share their discovered source with every on
   assert.ok(normalized.employees.every((employee) => employee.knowledgeDocumentIds?.includes(source.id)));
 });
 
+test("legacy sources without employee scope normalize before onboarding migration", () => {
+  const state = createInitialState("legacy-missing-source-scope");
+  const source = state.documents[0] as Partial<WorkspaceState["documents"][number]>;
+  delete source.employeeIds;
+  state.workspace.onboarding = {
+    ...state.workspace.onboarding,
+    status: "completed",
+    discoveredAt: new Date().toISOString(),
+    documentId: state.documents[0].id,
+    employeeId: state.employees[0].id,
+    employeeIds: state.employees.map((employee) => employee.id),
+  };
+  const normalized = normalizeWorkspaceState(state, state.workspace.id);
+  assert.ok(normalized.documents[0].employeeIds.length > 0);
+  assert.ok(normalized.employees.every((employee) => employee.knowledgeDocumentIds?.includes(state.documents[0].id)));
+});
+
 test("discovered workspaces receive a deterministic starter sequence during migration", () => {
   const legacy = JSON.parse(JSON.stringify(createInitialState("discovered-company"))) as WorkspaceState;
   legacy.sequences = [];
