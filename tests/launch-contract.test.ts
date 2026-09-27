@@ -304,6 +304,14 @@ test("first-run onboarding produces a visible launch asset set", () => {
   assert.match(console, /Sales sequence/);
 });
 
+test("onboarding shows chained research and brief progress after discovery", () => {
+  const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
+  assert.match(console, /onboarding.status === "ready" && \(researching \|\| briefing\)/);
+  assert.match(console, /Capturing public research/);
+  assert.match(console, /Preparing the first grounded brief/);
+  assert.match(console, /aria-live="polite"/);
+});
+
 test("email sequence enrollment is blocked until Gmail is connected", () => {
   const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
   const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
