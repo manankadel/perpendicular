@@ -315,6 +315,13 @@ test("email sequence enrollment is blocked until Gmail is connected", () => {
   assert.match(console, /create-sequence-task/);
 });
 
+test("Gmail opt-out requests enter the shared suppression path", () => {
+  const sync = readFileSync(join(root, "src/lib/gmail-sync.ts"), "utf8");
+  assert.match(sync, /containsUnsubscribeRequest/);
+  assert.match(sync, /future outbound sends blocked/);
+  assert.match(sync, /sequenceStatus = "paused"/);
+});
+
 test("sequence sends require activation and are explicit Gmail mutations", () => {
   const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
   const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");

@@ -5,6 +5,7 @@ import { getIntegrationMetadata, listIntegrationSummaries, markIntegrationSynced
 import { upsertGmailMessage } from "@/lib/inbox-store";
 import { addActivity, createId, ticketSlaMinutes, timestamp, type Ticket } from "@/lib/domain";
 import { updateWorkspace } from "@/lib/server-store";
+import { containsUnsubscribeRequest } from "@/lib/compliance";
 
 function emailAddress(value: string) {
   return value.match(/<([^>]+)>/)?.[1]?.toLowerCase() || value.trim().toLowerCase();
@@ -40,6 +41,7 @@ export async function syncGmailWorkspace(workspaceId: string, requestedHistoryId
   const summaries = await listIntegrationSummaries(workspaceId);
   const gmail = summaries.find((integration) => integration.provider === "gmail");
   const repliedEmails = new Set<string>();
+  const unsubscribeEmails = new Set<string>();
   const messageHistoryIds: string[] = [];
   const inboundMessages: Array<{ id: string; sender: string; subject: string; bodyText: string; receivedAt: string }> = [];
   let insertedCount = 0;
@@ -62,6 +64,7 @@ export async function syncGmailWorkspace(workspaceId: string, requestedHistoryId
     if (persisted.inserted) insertedCount += 1;
     if (isInbound) {
       repliedEmails.add(sender);
+      if (containsUnsubscribeRequest(message.subject, message.bodyText)) unsubscribeEmails.add(sender);
       if (persisted.inserted) inboundMessages.push({ id: message.id, sender, subject: message.subject, bodyText: message.bodyText, receivedAt: message.date });
     }
     if (message.historyId) messageHistoryIds.push(message.historyId);
@@ -99,11 +102,27 @@ export async function syncGmailWorkspace(workspaceId: string, requestedHistoryId
       addActivity(workspace, { type: "ticket", title: "Inbound Gmail message opened a ticket", detail: `${message.sender} · ${priority} priority · SLA running` });
     }
     for (const list of workspace.lists) for (const row of list.rows) {
-      if (!repliedEmails.has(row.email.toLowerCase()) || row.enrollmentStatus !== "enrolled") continue;
-      const sequenceName = row.lastAction?.startsWith("Enrolled in ") ? row.lastAction.slice("Enrolled in ".length) : null;
+      const email = row.email.toLowerCase();
+      if (unsubscribeEmails.has(email)) {
+        if (!workspace.suppressedEmails.includes(email)) {
+          workspace.suppressedEmails.push(email);
+          addActivity(workspace, { type: "lead", title: `${row.name} was automatically suppressed`, detail: "Unsubscribe request detected in Gmail · future outbound sends blocked" });
+        }
+        if (row.enrollmentStatus === "enrolled") {
+          row.enrollmentStatus = "replied";
+          row.sequenceStatus = "paused";
+          row.lastAction = "Unsubscribe request detected in Gmail · sequence paused";
+          const sequence = row.sequenceId ? workspace.sequences.find((item) => item.id === row.sequenceId) : undefined;
+          if (sequence) sequence.replied += 1;
+          addActivity(workspace, { type: "sequence", title: `${row.name} unsubscribed`, detail: "Gmail event persisted · enrollment paused and address suppressed" });
+        }
+        continue;
+      }
+      if (!repliedEmails.has(email) || row.enrollmentStatus !== "enrolled") continue;
       row.enrollmentStatus = "replied";
+      row.sequenceStatus = "paused";
       row.lastAction = "Reply detected in Gmail · sequence paused";
-      const sequence = workspace.sequences.find((item) => sequenceName && item.name === sequenceName);
+      const sequence = row.sequenceId ? workspace.sequences.find((item) => item.id === row.sequenceId) : undefined;
       if (sequence) sequence.replied += 1;
       addActivity(workspace, { type: "sequence", title: `${row.name} replied`, detail: "Gmail event persisted · enrollment paused" });
     }
