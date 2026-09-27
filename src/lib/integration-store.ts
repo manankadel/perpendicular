@@ -21,6 +21,15 @@ export type IntegrationHealthEvent = {
   createdAt: string;
 };
 
+export const gmailMailboxScopes = [
+  "https://www.googleapis.com/auth/gmail.modify",
+  "https://www.googleapis.com/auth/gmail.send",
+] as const;
+
+export function hasGmailMailboxScopes(scopes: string[]) {
+  return gmailMailboxScopes.every((scope) => scopes.includes(scope));
+}
+
 export type WebhookEventSummary = {
   id: string;
   provider: string;
@@ -62,7 +71,7 @@ export async function listIntegrationSummaries(workspaceId: string): Promise<Int
   );
   const summaries = await Promise.all(result.rows.map(async (row) => ({
     provider: row.provider,
-    status: row.status,
+    status: row.provider === "gmail" && row.status === "connected" && !hasGmailMailboxScopes(row.scopes || []) ? "degraded" as const : row.status,
     accountEmail: row.account_email,
     scopes: row.scopes || [],
     lastSyncAt: row.last_sync_at?.toISOString() || null,
@@ -117,6 +126,8 @@ export async function saveGmailConnection(args: {
   scopes: string[];
 }) {
   const encrypted = encryptSecret(args.refreshToken);
+  const mailboxAccess = hasGmailMailboxScopes(args.scopes);
+  const status: IntegrationStatus = mailboxAccess ? "connected" : "degraded";
   await transaction(async (client) => {
     const accountKey = `gmail-account:${args.accountEmail.trim().toLowerCase()}`;
     await client.query("select pg_advisory_xact_lock(hashtextextended($1, 1))", [accountKey]);
@@ -131,16 +142,17 @@ export async function saveGmailConnection(args: {
     await client.query(
       `insert into perpendicular_integrations
         (id, workspace_id, provider, status, account_email, provider_account_id, encrypted_refresh_token, scopes, metadata, updated_at)
-       values ($1, $2, 'gmail', 'connected', $3, $4, $5, $6, '{}'::jsonb, now())
+       values ($1, $2, 'gmail', $7, $3, $4, $5, $6, '{}'::jsonb, now())
        on conflict (workspace_id, provider) do update set
-         status = 'connected', account_email = excluded.account_email,
+         status = excluded.status, account_email = excluded.account_email,
          provider_account_id = excluded.provider_account_id,
          encrypted_refresh_token = excluded.encrypted_refresh_token,
          scopes = excluded.scopes, updated_at = now()`,
-      [randomToken(18), args.workspaceId, args.accountEmail, args.providerAccountId, encrypted, args.scopes],
+      [randomToken(18), args.workspaceId, args.accountEmail, args.providerAccountId, encrypted, args.scopes, status],
     );
   });
-  await recordIntegrationHealth(args.workspaceId, "gmail", "connected", "oauth_connected", "Gmail OAuth connection persisted.");
+  await recordIntegrationHealth(args.workspaceId, "gmail", status, mailboxAccess ? "oauth_connected" : "oauth_missing_mailbox_scopes", mailboxAccess ? "Gmail OAuth connection persisted." : "Reconnect Gmail and grant mailbox send/read access before using inbox or outbound actions.");
+  return { mailboxAccess };
 }
 
 export async function getGmailConnection(workspaceId: string): Promise<GmailConnection | null> {

@@ -16,14 +16,14 @@ export async function GET(request: Request) {
     const oauthState = await consumeOAuthState(state, "google-gmail");
     const token = await exchangeGoogleCode(code, oauthState.codeVerifier);
     const profile = await googleProfile(token.accessToken);
-    await saveGmailConnection({
+    const connection = await saveGmailConnection({
       workspaceId: oauthState.workspaceId,
       accountEmail: profile.email,
       providerAccountId: profile.id,
       refreshToken: token.refresh_token as string,
       scopes: (token.scope || "").split(" ").filter(Boolean),
     });
-    if (process.env.GMAIL_PUBSUB_TOPIC) {
+    if (connection.mailboxAccess && process.env.GMAIL_PUBSUB_TOPIC) {
       try { await watchGmail(oauthState.workspaceId); }
       catch (error) { await recordIntegrationHealth(oauthState.workspaceId, "gmail", "degraded", "watch_registration_failed", error instanceof Error ? error.message : "Gmail watch registration failed."); }
     }
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     } catch {
       auditWarning = true;
     }
-    return NextResponse.redirect(`${destination}/?gmail=connected${auditWarning ? "&audit=warning" : ""}`);
+    return NextResponse.redirect(`${destination}/?gmail=${connection.mailboxAccess ? "connected" : "needs_mail_access"}${auditWarning ? "&audit=warning" : ""}`);
   } catch {
     return NextResponse.redirect(`${destination}/?gmail=error`);
   }

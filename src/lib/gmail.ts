@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getGmailConnection, getIntegrationMetadata, markIntegrationStatus, recordIntegrationHealth, updateIntegrationMetadata } from "@/lib/integration-store";
+import { getGmailConnection, getIntegrationMetadata, hasGmailMailboxScopes, markIntegrationStatus, recordIntegrationHealth, updateIntegrationMetadata } from "@/lib/integration-store";
 
 const gmailScope = [
   "openid",
@@ -82,6 +82,10 @@ export async function googleProfile(accessToken: string) {
 async function accessTokenFor(workspaceId: string) {
   const connection = await getGmailConnection(workspaceId);
   if (!connection) throw new Error("Connect Gmail before using mailbox actions.");
+  if (!hasGmailMailboxScopes(connection.scopes)) {
+    await markIntegrationStatus(workspaceId, "gmail", "degraded");
+    throw new Error("Reconnect Gmail and grant mailbox send/read access before using inbox or outbound actions.");
+  }
   const { clientId, clientSecret } = googleCredentials();
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",

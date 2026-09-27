@@ -198,6 +198,17 @@ test("unconfigured Gmail is represented honestly instead of opening a dead OAuth
   assert.match(console, /Gmail OAuth is not configured on the Dell/);
 });
 
+test("Gmail connections without mailbox scopes are degraded and require reconnection", () => {
+  const store = readFileSync(join(root, "src/lib/integration-store.ts"), "utf8");
+  const gmail = readFileSync(join(root, "src/lib/gmail.ts"), "utf8");
+  const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
+  assert.match(store, /gmail\.modify/);
+  assert.match(store, /gmail\.send/);
+  assert.match(store, /status: IntegrationStatus = mailboxAccess \? "connected" : "degraded"/);
+  assert.match(gmail, /Reconnect Gmail and grant mailbox send\/read access/);
+  assert.match(console, /Mailbox access is incomplete/);
+});
+
 test("Gmail mailbox ownership cannot cross workspace boundaries", () => {
   const store = readFileSync(join(root, "src/lib/integration-store.ts"), "utf8");
   assert.match(store, /pg_advisory_xact_lock\(hashtextextended\(\$1, 1\)\)/);
@@ -414,6 +425,6 @@ test("external side effects do not masquerade as failures when audit storage is 
   assert.match(gmail, /The email was sent/);
   assert.match(keys, /The key was created/);
   assert.match(bootstrap, /The workspace was created/);
-  assert.match(callback, /gmail=connected/);
+  assert.match(callback, /gmail=\$\{connection\.mailboxAccess \? "connected" : "needs_mail_access"\}/);
   assert.match(callback, /audit=warning/);
 });
