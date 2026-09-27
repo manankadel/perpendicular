@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://perpendicular-api.bluebloodstudio.com" : "")).replace(/\/$/, "");
+
 export default function SiteChat({ slug, workspaceId, agentName, greeting, initialAttribution }: { slug: string; workspaceId: string; agentName: string; greeting: string; initialAttribution?: Record<string, string> }) {
   const [message, setMessage] = useState("");
   const [sessionId, setSessionId] = useState(() => typeof window === "undefined" ? "" : window.sessionStorage.getItem(`perpendicular-site-session:${slug}`) || "");
@@ -15,7 +17,7 @@ export default function SiteChat({ slug, workspaceId, agentName, greeting, initi
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch(`/api/site/${encodeURIComponent(slug)}/chat`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ workspaceId, message: text, sessionId: sessionId || undefined, attribution: initialAttribution }) });
+      const response = await fetch(`${apiBase}/api/site/${encodeURIComponent(slug)}/chat`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ workspaceId, message: text, sessionId: sessionId || undefined, attribution: initialAttribution }) });
       const body = await response.json().catch(() => ({})) as { message?: string; sessionId?: string; error?: string };
       if (!response.ok) throw new Error(body.error || "The inbound agent could not respond.");
       const nextSessionId = body.sessionId || sessionId;
