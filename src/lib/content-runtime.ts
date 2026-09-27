@@ -4,6 +4,10 @@ function findContent(state: WorkspaceState, contentId: string) {
   return state.content.find((item) => item.id === contentId);
 }
 
+export function supportsNativeContentDelivery(channel: ContentItem["channel"]) {
+  return channel === "website" || channel === "blog";
+}
+
 function publicPageSlug(state: WorkspaceState, title: string) {
   const baseSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || createId("site");
   let slug = baseSlug;
@@ -15,6 +19,7 @@ function publicPageSlug(state: WorkspaceState, title: string) {
 export function scheduleContentInState(state: WorkspaceState, contentId: string, scheduledAt?: string | null) {
   const item = findContent(state, contentId);
   if (!item || !item.body) throw new Error("Generate the content draft before scheduling it.");
+  if (!supportsNativeContentDelivery(item.channel)) throw new Error("Only website and blog content can be scheduled natively. Keep this approved draft for its provider handoff.");
   if (!["approved", "scheduled"].includes(item.status)) throw new Error("Approve the content before scheduling it.");
   const date = scheduledAt ? new Date(scheduledAt) : new Date(Date.now() + 60 * 60 * 1000);
   if (Number.isNaN(date.getTime())) throw new Error("Scheduled time is invalid.");
@@ -28,6 +33,7 @@ export function scheduleContentInState(state: WorkspaceState, contentId: string,
 export function publishContentInState(state: WorkspaceState, contentId: string) {
   const item = findContent(state, contentId);
   if (!item || !["approved", "scheduled"].includes(item.status)) throw new Error("Approve the content before publishing it.");
+  if (!supportsNativeContentDelivery(item.channel)) throw new Error("Perpendicular cannot publish this channel without its provider adapter. Copy the approved draft for the final handoff.");
   if (item.channel === "website" || item.channel === "blog") {
     const agent = state.inboundAgents.find((candidate) => candidate.status === "live" && candidate.employeeId);
     if (!agent) throw new Error("Publish a website operator before publishing website content.");

@@ -13,7 +13,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Employee → scoped knowledge → local Ollama run → score → trace | Live | `run-employee`, `llm.ts`, `Run.trace`, domain tests |
 | Company context, persisted Chat, Scheduled work, and workspace Dashboard | Live at launch scope | `PlatformViews.tsx`, `update-profile`, `create-schedule`, `run-scheduled`, workspace state |
 | Mission queue with run → review → approve, delegation, due dates, and audit activity | Live at launch scope | `run-mission`, `approve-mission`, `delegate-mission`, Missions view |
-| Grounded content workflow with draft → review → approve → schedule → publish state | Live at launch scope | `generate-content`, `approve-content`, `schedule-content`, `publish-content`, Content view |
+| Grounded content workflow with draft → review → approve → schedule → publish state | Live at launch scope for native Website/Blog delivery; external channels remain approved provider handoffs | `generate-content`, `approve-content`, `schedule-content`, `publish-content`, Content view |
 | Native scheduled website/blog publication | Live at launch scope | Shared `content-runtime`, heartbeat `scheduled-content` lease, collision-safe `/site/{slug}` publication |
 | Inspectable playbook catalog that executes through a live employee and creates scored review missions | Live at launch scope | `install-playbook`, executable `run-playbook`, Playbooks view, persisted run/mission output |
 | Compatibility migration for existing one-operator workspaces | Live | `normalizeWorkspaceState`, `server-store.ts`, legacy migration test |
