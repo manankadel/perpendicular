@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight, ShieldCheck } from "lucide-react";
 
-const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
-const canonicalOrigin = (process.env.NEXT_PUBLIC_CANONICAL_URL || "").replace(/\/$/, "");
+const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://perpendicular-api.bluebloodstudio.com" : "")).replace(/\/$/, "");
+const canonicalOrigin = (process.env.NEXT_PUBLIC_CANONICAL_URL || (process.env.NODE_ENV === "production" ? "https://perpendicular.bluebloodstudio.com" : "")).replace(/\/$/, "");
 
 type LoginResponse = {
   message?: string;

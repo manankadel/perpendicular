@@ -172,6 +172,7 @@ test("the known Vercel alias hands sessions to the canonical cookie origin in th
   const login = readFileSync(join(root, "src/components/PerpendicularLogin.tsx"), "utf8");
   const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
   assert.match(login, /perpendicular-nine\.vercel\.app/);
+  assert.match(login, /perpendicular-api\.bluebloodstudio\.com/);
   assert.match(login, /NEXT_PUBLIC_CANONICAL_URL/);
   assert.match(console, /window\.location\.replace/);
   assert.match(console, /setSelectedEmployeeId\(\(currentId\)/);

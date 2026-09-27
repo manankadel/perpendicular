@@ -332,6 +332,8 @@ button:disabled { cursor: wait; opacity: .52; }
 .search-icon svg { width: 14px; height: 14px; }
 .credit-preview { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 10px; white-space: nowrap; }
 .credit-preview strong { color: var(--signal); font-weight: 700; }
+.batch-estimate { margin: 12px 0 2px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; color: var(--text-muted); background: rgba(255,255,255,.025); font-size: 11px; }
+.batch-estimate strong { color: var(--text); }
 .small-button { min-height: 29px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 5px; padding: 0 8px; color: var(--text-muted); background: #171b1e; font-size: 10px; font-weight: 700; }
 .small-button:hover { border-color: var(--signal); color: var(--text); }
 .small-button.ready { color: var(--mint); border-color: #304d40; }

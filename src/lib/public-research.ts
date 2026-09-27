@@ -2,6 +2,7 @@ import "server-only";
 
 import dns from "node:dns/promises";
 import net from "node:net";
+import { parsePublicKeywordResults, type PublicKeywordMatch } from "@/lib/public-search-parser";
 
 export type WebsiteResearch = {
   url: string;
@@ -118,30 +119,19 @@ export async function researchPersonCompany(email: string, company: string) {
   return { ...result, insight };
 }
 
-export type PublicKeywordMatch = { title: string; url: string; snippet: string };
-
 export async function researchPublicKeyword(keyword: string): Promise<{ matches: PublicKeywordMatch[] }> {
   const query = keyword.trim();
   if (!query) throw new Error("A keyword is required.");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    const response = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
-      headers: { accept: "text/html", "user-agent": "PerpendicularBot/1.0 (+self-hosted)" },
+    const response = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=us-en`, {
+      headers: { accept: "text/html", "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/122 Safari/537.36" },
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`Public search returned HTTP ${response.status}.`);
     const html = (await response.text()).slice(0, 1_000_000);
-    const matches: PublicKeywordMatch[] = [];
-    const resultPattern = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
-    for (const match of html.matchAll(resultPattern)) {
-      const clean = (value: string) => value.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, " ").trim();
-      const url = clean(match[1]);
-      if (!/^https?:\/\//i.test(url)) continue;
-      matches.push({ title: clean(match[2]).slice(0, 240), url, snippet: clean(match[3]).slice(0, 500) });
-      if (matches.length >= 10) break;
-    }
-    return { matches };
+    return { matches: parsePublicKeywordResults(html) };
   } finally {
     clearTimeout(timeout);
   }
