@@ -32,7 +32,7 @@ import { listIntegrationSummaries, recordAuditEvent } from "@/lib/integration-st
 import { sendGmailMessage, GmailSendError } from "@/lib/gmail";
 import { upsertGmailMessage } from "@/lib/inbox-store";
 import { claimOutboundMessage, markOutboundFailed, markOutboundSent, markOutboundUnknown } from "@/lib/outbound-store";
-import { sequenceEmailFor, sequenceStepIdempotencyKey } from "@/lib/sequence";
+import { buildSequenceSteps, sequenceEmailFor, sequenceStepIdempotencyKey } from "@/lib/sequence";
 import { ingestUploadedDocument } from "@/lib/document-ingest";
 import { researchPersonCompany, researchPublicKeyword, researchWebsite } from "@/lib/public-research";
 import { corsHeadersFor } from "@/lib/cors";
@@ -912,8 +912,12 @@ async function postWorkspace(request: Request): Promise<Response> {
         case "create-sequence": {
           const name = String(body.name || "").trim();
           if (!name) throw new Error("Sequence name is required.");
-          state.sequences.unshift({ id: createId("seq"), name, status: "draft", audience: String(body.audience || "Imported leads"), enrolled: 0, sent: 0, replied: 0, booked: 0, steps: [{ id: createId("step"), channel: "Email", title: "First touch", delay: "Day 0", subject: String(body.subject || "").trim() || undefined, body: String(body.body || "Write a useful, specific first touch. Require human approval before sending.") }] });
-          addActivity(state, { type: "sequence", title: `${name} was created`, detail: "Draft sequence · Gmail connection and approval required before sending", });
+          const steps = buildSequenceSteps(body.steps, {
+            subject: String(body.subject || "").trim(),
+            body: String(body.body || "Write a useful, specific first touch. Require human approval before sending."),
+          });
+          state.sequences.unshift({ id: createId("seq"), name, status: "draft", audience: String(body.audience || "Imported leads"), enrolled: 0, sent: 0, replied: 0, booked: 0, steps });
+          addActivity(state, { type: "sequence", title: `${name} was created`, detail: `Draft sequence · ${steps.length} step${steps.length === 1 ? "" : "s"} · Gmail connection and approval required before sending`, });
           return state;
         }
         case "activate-sequence": {
