@@ -1327,19 +1327,34 @@ async function postWorkspace(request: Request): Promise<Response> {
           const name = String(body.name || "").trim();
           if (!name) throw new Error("Source name is required.");
           const type = (["manual", "csv", "public"] as const).includes(body.type as never) ? body.type as LeadSource["type"] : "manual";
-          const source: LeadSource = { id: createId("source"), name, type, status: "ready", recordCount: 0, lastRunAt: null, createdAt: timestamp() };
+          const listId = String(body.listId || "").trim() || null;
+          if (type === "csv" && (!listId || !state.lists.some((list) => list.id === listId))) throw new Error("Choose a Smart List for the CSV source.");
+          const query = String(body.query || "").trim() || (type === "public" ? name : null);
+          const source: LeadSource = { id: createId("source"), name, type, listId, query, status: "ready", recordCount: 0, lastRunAt: null, lastSummary: null, createdAt: timestamp() };
           state.leadSources.unshift(source);
-          addActivity(state, { type: "lead", title: `${name} was added as a lead source`, detail: `${type} source · ready to run` });
+          addActivity(state, { type: "lead", title: `${name} was added as a lead source`, detail: `${type} source · ready to run${listId ? ` · ${state.lists.find((list) => list.id === listId)?.name}` : ""}` });
           return state;
         }
         case "run-lead-source": {
           const source = state.leadSources.find((candidate) => candidate.id === String(body.sourceId || ""));
           if (!source) throw new Error("Lead source not found.");
           source.status = "running";
-          source.recordCount = state.people.length + state.lists.reduce((total, list) => total + list.rows.length, 0);
+          if (source.type === "csv") {
+            const list = source.listId ? state.lists.find((candidate) => candidate.id === source.listId) : undefined;
+            if (!list) throw new Error("The source Smart List no longer exists.");
+            source.recordCount = list.rows.length;
+            source.lastSummary = `${list.rows.length} Smart List row${list.rows.length === 1 ? "" : "s"} available for research and workflow actions.`;
+          } else if (source.type === "public") {
+            const result = await researchPublicKeyword(source.query || source.name);
+            source.recordCount = result.matches.length;
+            source.lastSummary = result.matches.slice(0, 3).map((match) => match.title).join(" · ") || "No public matches found.";
+          } else {
+            source.recordCount = state.people.length;
+            source.lastSummary = `${state.people.length} manually owned People record${state.people.length === 1 ? "" : "s"} available for qualification.`;
+          }
           source.status = "completed";
           source.lastRunAt = timestamp();
-          addActivity(state, { type: "lead", title: `${source.name} finished`, detail: `${source.recordCount} workspace records available for qualification` });
+          addActivity(state, { type: "lead", title: `${source.name} finished`, detail: `${source.recordCount} record${source.recordCount === 1 ? "" : "s"} captured · ${source.lastSummary || "ready for the next workflow"}` });
           return state;
         }
         case "create-campaign": {

@@ -299,9 +299,12 @@ export type LeadSource = {
   id: string;
   name: string;
   type: "manual" | "csv" | "public";
+  listId?: string | null;
+  query?: string | null;
   status: "ready" | "running" | "completed" | "failed";
   recordCount: number;
   lastRunAt: string | null;
+  lastSummary?: string | null;
   createdAt: string;
 };
 

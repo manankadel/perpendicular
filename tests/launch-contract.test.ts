@@ -276,6 +276,16 @@ test("qualified People records can enter Smart List workflows", () => {
   assert.match(console, /Add to \{targetList\.name\}/);
 });
 
+test("lead source runs capture real source-specific results", () => {
+  const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
+  const console = readFileSync(join(root, "src/components/PlatformViews.tsx"), "utf8");
+  assert.match(route, /source\.type === "public"/);
+  assert.match(route, /researchPublicKeyword\(source\.query \|\| source\.name\)/);
+  assert.match(route, /source\.type === "csv"/);
+  assert.match(console, /Choose a Smart List/);
+  assert.match(console, /source\.lastSummary/);
+});
+
 test("email sequence enrollment is blocked until Gmail is connected", () => {
   const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
   const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
