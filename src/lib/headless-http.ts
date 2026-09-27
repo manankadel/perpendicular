@@ -9,6 +9,13 @@ export function tokenEstimate(value: string) {
   return Math.max(1, Math.ceil(value.length / 4));
 }
 
+function streamPieces(value: string) {
+  if (!value) return [""];
+  const pieces: string[] = [];
+  for (let index = 0; index < value.length; index += 120) pieces.push(value.slice(index, index + 120));
+  return pieces;
+}
+
 export function openAiResponse(result: HeadlessChatResult, request: Request, stream: boolean) {
   const id = `chatcmpl_${result.employeeId}_${Date.now()}`;
   const usage = { prompt_tokens: tokenEstimate(result.content), completion_tokens: tokenEstimate(result.content), total_tokens: tokenEstimate(result.content) * 2 };
@@ -16,7 +23,7 @@ export function openAiResponse(result: HeadlessChatResult, request: Request, str
     return corsJson({ id, object: "chat.completion", created: Math.floor(Date.now() / 1000), model: result.model, choices: [{ index: 0, message: { role: "assistant", content: result.content }, finish_reason: "stop" }], usage, perpendicular: { employee_id: result.employeeId, employee: result.employeeName, provider: result.provider, citations: result.citations, timings: result.timings } }, undefined, request);
   }
   const encoder = new TextEncoder();
-  const pieces = result.content.match(/.{1,120}(?:\s|$)/g)?.map((piece) => piece.trim()).filter(Boolean) || [result.content];
+  const pieces = streamPieces(result.content);
   const created = Math.floor(Date.now() / 1000);
   type StreamChunk = { id: string; object: string; created: number; model: string; choices: Array<{ index: number; delta: { role?: string; content?: string }; finish_reason: string | null }> };
   const chunks: StreamChunk[] = pieces.map((piece, index) => ({
@@ -44,7 +51,7 @@ export function anthropicResponse(result: HeadlessChatResult, request: Request, 
     return corsJson({ id, type: "message", role: "assistant", model: result.model, content: [{ type: "text", text: result.content }], stop_reason: "end_turn", stop_sequence: null, usage, perpendicular: { employee_id: result.employeeId, employee: result.employeeName, provider: result.provider, citations: result.citations, timings: result.timings } }, undefined, request);
   }
   const encoder = new TextEncoder();
-  const pieces = result.content.match(/.{1,120}(?:\s|$)/g)?.map((piece) => piece.trim()).filter(Boolean) || [result.content];
+  const pieces = streamPieces(result.content);
   const event = (name: string, payload: unknown) => encoder.encode(`event: ${name}\ndata: ${JSON.stringify(payload)}\n\n`);
   const streamBody = new ReadableStream({
     start(controller) {

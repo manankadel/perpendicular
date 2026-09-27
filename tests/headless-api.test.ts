@@ -40,6 +40,7 @@ test("Anthropic-compatible streaming returns valid message events", async () => 
   assert.match(body, /event: message_start/);
   assert.match(body, /event: content_block_delta/);
   assert.match(body, /Grounded answer with a next action\./);
+  assert.match(body, /"text":"Grounded answer with a next action\."/);
   assert.match(body, /event: message_delta/);
   assert.match(body, /event: message_stop/);
 });
