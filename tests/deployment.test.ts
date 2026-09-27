@@ -71,6 +71,13 @@ test("health exposes backup readiness without treating an absent remote as a sec
   assert.match(healthRoute, /offsite_backup_remote/);
 });
 
+test("health detects Gmail connections that lack mailbox scopes", () => {
+  assert.match(healthRoute, /gmail\.modify/);
+  assert.match(healthRoute, /gmail\.send/);
+  assert.match(healthRoute, /scopes @> \$1::text\[\]/);
+  assert.match(healthRoute, /degraded_integrations/);
+});
+
 test("database connections retry after a transient outage", () => {
   assert.match(database, /unavailableUntil/);
   assert.match(database, /databaseRetryBackoffMs/);

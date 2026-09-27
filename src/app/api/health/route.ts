@@ -89,7 +89,11 @@ export async function GET(request: Request) {
         `select
            (select count(*) from perpendicular_jobs where status = 'dead_letter')::text as dead_letter_jobs,
            (select count(*) from perpendicular_webhook_events where status = 'failed')::text as failed_webhooks,
-           (select count(*) from perpendicular_integrations where status = 'degraded')::text as degraded_integrations`,
+           (select count(*) from perpendicular_integrations
+             where status = 'degraded'
+                or (provider = 'gmail' and status = 'connected'
+                  and not (scopes @> $1::text[])))::text as degraded_integrations`,
+        [["https://www.googleapis.com/auth/gmail.modify", "https://www.googleapis.com/auth/gmail.send"]],
       );
       const row = result.rows[0];
       operations = row ? {
@@ -101,6 +105,10 @@ export async function GET(request: Request) {
       operations = null;
     }
   }
+  const warnings = [
+    backupOffsiteConfigured ? null : "offsite_backup_remote",
+    operations && operations.degradedIntegrations > 0 ? "degraded_integrations" : null,
+  ].filter((warning): warning is string => Boolean(warning));
   return NextResponse.json({
     ok: production ? ok : true,
     service: "perpendicular-api",
@@ -111,7 +119,7 @@ export async function GET(request: Request) {
     configuration: {
       ok: configurationGaps.length === 0,
       gaps: configurationGaps,
-      warnings: backupOffsiteConfigured ? [] : ["offsite_backup_remote"],
+      warnings,
       gmailOAuth: gmailOAuthConfigured,
       gmailPush: gmailPushConfigured,
       integrationEncryption: integrationEncryptionConfigured,
