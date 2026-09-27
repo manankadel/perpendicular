@@ -1,11 +1,21 @@
+"use client";
+
+import { useParams, useSearchParams } from "next/navigation";
 import PublishedSitePage from "@/components/PublishedSitePage";
 
-export const dynamic = "force-dynamic";
+function first(value: string | null) {
+  return value || "";
+}
 
-export default async function PublicSite({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const { slug } = await params;
-  const query = await searchParams;
-  const first = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] || "" : value || "";
-  const initialAttribution = { source: first(query.utm_source), medium: first(query.utm_medium), campaign: first(query.utm_campaign), content: first(query.utm_content), term: first(query.utm_term) };
-  return <PublishedSitePage slug={slug} initialAttribution={initialAttribution} />;
+export default function PublicSite() {
+  const params = useParams<{ slug: string }>();
+  const searchParams = useSearchParams();
+  const initialAttribution = {
+    source: first(searchParams.get("utm_source")),
+    medium: first(searchParams.get("utm_medium")),
+    campaign: first(searchParams.get("utm_campaign")),
+    content: first(searchParams.get("utm_content")),
+    term: first(searchParams.get("utm_term")),
+  };
+  return <PublishedSitePage slug={params.slug} initialAttribution={initialAttribution} />;
 }
