@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { defaultOutboundSafetySettings, normalizeOutboundSafetySettings, type OutboundSafetySettings } from "@/lib/outbound-safety";
 import { createAttributionTouch, type AttributionSummary, type AttributionTouch } from "@/lib/attribution";
 import type { DeliverabilityCheck } from "@/lib/deliverability";
+import { defaultBookingSettings, normalizeBookingSettings, slugifyBooking } from "@/lib/booking";
 
 export type { OutboundSafetySettings } from "@/lib/outbound-safety";
 
@@ -366,6 +367,40 @@ export type SiteRecord = {
   updatedAt: string;
 };
 
+export type BookingSettings = {
+  id: string;
+  enabled: boolean;
+  slug: string;
+  title: string;
+  description: string;
+  durationMinutes: number;
+  bufferMinutes: number;
+  timezone: string;
+  bookingWindowDays: number;
+  availability: { weekdays: number[]; start: string; end: string };
+  hostEmployeeIds: string[];
+  roundRobinCursor: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MeetingBooking = {
+  id: string;
+  confirmationToken: string;
+  name: string;
+  email: string;
+  company: string;
+  notes: string;
+  hostEmployeeId: string;
+  startAt: string;
+  endAt: string;
+  timezone: string;
+  status: "confirmed" | "cancelled";
+  source: "public" | "manual";
+  createdAt: string;
+  cancelledAt: string | null;
+};
+
 export type AppRecord = {
   id: string;
   name: string;
@@ -473,6 +508,8 @@ export type WorkspaceState = {
   keywordMonitors: KeywordMonitor[];
   inboundAgents: InboundAgent[];
   sites: SiteRecord[];
+  bookingSettings: BookingSettings | null;
+  bookings: MeetingBooking[];
   apps: AppRecord[];
   tickets: Ticket[];
   activity: Activity[];
@@ -743,9 +780,27 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
   const launchSurfaceReady = Boolean(onboarding.discoveredAt && employees.length && documents.length);
   const primaryEmployee = employees.find((employee) => employee.id === onboarding.employeeId) || employees[0];
   const launchId = companyId.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 72) || "workspace";
+  const bookingSettings = normalizeBookingSettings(legacy.bookingSettings, state.profile?.timezone || "UTC");
+  const launchBookingSettings = bookingSettings || (launchSurfaceReady && primaryEmployee
+    ? {
+        ...defaultBookingSettings(state.profile?.timezone || "UTC"),
+        id: `booking-onboarding-${launchId}`,
+        enabled: true,
+        slug: slugifyBooking(`${state.workspace.name || companyId}-meet-${launchId}`) || `meet-${launchId}`,
+        title: `Talk to ${state.workspace.name || companyId}`,
+        description: "Choose a time that works. The workspace operator will bring the discovered company context into the conversation.",
+        timezone: state.profile?.timezone || "UTC",
+        hostEmployeeIds: [primaryEmployee.id],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }
+    : null);
   const launchLists = [...lists];
   const launchAgents = Array.isArray(state.inboundAgents) ? [...state.inboundAgents] : [];
   const launchSites = Array.isArray(state.sites) ? [...state.sites] : [];
+  const bookings: MeetingBooking[] = Array.isArray(legacy.bookings)
+    ? legacy.bookings.filter((booking): booking is MeetingBooking => Boolean(booking && typeof booking.id === "string" && typeof booking.startAt === "string" && typeof booking.endAt === "string" && typeof booking.hostEmployeeId === "string")).slice(0, 500)
+    : [];
   if (launchSurfaceReady && launchLists.length === 0) {
     launchLists.push({
       id: `list-onboarding-${launchId}`,
@@ -847,6 +902,8 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
     keywordMonitors: Array.isArray(state.keywordMonitors) ? state.keywordMonitors : [],
     inboundAgents: launchAgents,
     sites: launchSites,
+    bookingSettings: launchBookingSettings,
+    bookings,
     apps: Array.isArray(state.apps) ? state.apps.map((app) => ({
       ...app,
       task: typeof app.task === "string" && app.task.trim() ? app.task : app.description,
@@ -922,6 +979,8 @@ function createEmptyState(companyId: string): WorkspaceState {
     keywordMonitors: [],
     inboundAgents: [],
     sites: [],
+    bookingSettings: null,
+    bookings: [],
     apps: [],
     tickets: [],
     activity: [],

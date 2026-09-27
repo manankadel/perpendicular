@@ -22,6 +22,7 @@ import {
   type ScheduledWork,
   type SmartListAction,
   type SiteRecord,
+  type BookingSettings,
   type WorkspaceState,
 } from "@/lib/domain";
 import { generateEmployeeReply, type LlmResult } from "@/lib/llm";
@@ -52,6 +53,7 @@ import { publishContentInState, scheduleContentInState } from "@/lib/content-run
 import { scheduleCampaignInState } from "@/lib/campaign-runtime";
 import { executeCampaignBroadcast } from "@/lib/campaign-send-runtime";
 import { checkDomainDeliverability } from "@/lib/deliverability";
+import { defaultBookingSettings, normalizeBookingSettings, slugifyBooking } from "@/lib/booking";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -226,8 +228,8 @@ async function postWorkspace(request: Request): Promise<Response> {
   if (!action) return json({ error: "Missing action." }, { status: 400 });
   const requiredPermission = "workspace:write";
   if (!hasPermission(identity.context, requiredPermission)) return json({ error: "You do not have permission for this action." }, { status: 403 });
-  if (["update-outbound-safety", "suppress-domain", "unsuppress-domain", "check-deliverability"].includes(action) && !hasPermission(identity.context, "settings:write")) {
-    return json({ error: "You do not have permission to change outbound safety settings." }, { status: 403 });
+  if (["update-outbound-safety", "suppress-domain", "unsuppress-domain", "check-deliverability", "save-booking-settings"].includes(action) && !hasPermission(identity.context, "settings:write")) {
+    return json({ error: "You do not have permission to change workspace settings." }, { status: 403 });
   }
 
   let importSummary: { imported: number; skipped: number; errors: LeadCsvError[] } | undefined;
@@ -268,6 +270,21 @@ async function postWorkspace(request: Request): Promise<Response> {
         state.leadSources.unshift(artifacts.leadSource);
         state.inboundAgents.unshift(artifacts.inboundAgent);
         state.sites.unshift(artifacts.site);
+        if (!state.bookingSettings) {
+          const bookingBase = defaultBookingSettings(artifacts.profile.timezone);
+          state.bookingSettings = {
+            ...bookingBase,
+            id: `booking-onboarding-${companyId}`,
+            enabled: true,
+            slug: slugifyBooking(`${companyName}-meet-${companyId}`) || `meet-${companyId}`,
+            title: `Talk to ${companyName}`,
+            description: "Choose a time that works. The workspace operator will bring the discovered company context into the conversation.",
+            timezone: artifacts.profile.timezone,
+            hostEmployeeIds: artifacts.employees.filter((employee) => employee.status === "live").map((employee) => employee.id),
+            createdAt: timestamp(),
+            updatedAt: timestamp(),
+          };
+        }
         state.playbooks = state.playbooks.length ? state.playbooks : artifacts.playbooks;
         state.workspace.onboarding = {
           ...createOnboardingState("ready"),
@@ -1451,6 +1468,43 @@ async function postWorkspace(request: Request): Promise<Response> {
           agent.status = body.active === false ? "paused" : "live";
           agent.updatedAt = timestamp();
           addActivity(state, { type: "system", title: `${agent.name} is ${agent.status}`, detail: "Inbound routing state updated" });
+          return state;
+        }
+        case "save-booking-settings": {
+          const existing = state.bookingSettings;
+          const hostEmployeeIds = Array.isArray(body.hostEmployeeIds)
+            ? body.hostEmployeeIds.map((id) => String(id).trim()).filter((id) => Boolean(findEmployee(state, id)?.status === "live"))
+            : [];
+          const candidate = normalizeBookingSettings({
+            id: existing?.id || createId("booking-settings"),
+            enabled: body.enabled !== false,
+            slug: String(body.slug || "meet"),
+            title: String(body.title || "Book a conversation"),
+            description: String(body.description || "Choose a time that works. The workspace will assign the next available operator."),
+            durationMinutes: Number(body.durationMinutes),
+            bufferMinutes: Number(body.bufferMinutes),
+            timezone: String(body.timezone || state.profile.timezone || "UTC"),
+            bookingWindowDays: Number(body.bookingWindowDays),
+            availability: body.availability,
+            hostEmployeeIds,
+            roundRobinCursor: existing?.roundRobinCursor || 0,
+            createdAt: existing?.createdAt || timestamp(),
+            updatedAt: timestamp(),
+          }, state.profile.timezone);
+          if (!candidate) throw new Error("Add a valid booking slug and availability window.");
+          if (!hostEmployeeIds.length) throw new Error("Choose at least one live operator for bookings.");
+          state.bookingSettings = candidate as BookingSettings;
+          addActivity(state, { type: "system", title: `${candidate.title} booking page was saved`, detail: `${candidate.enabled ? "Live" : "Paused"} · /book/${candidate.slug} · ${hostEmployeeIds.length} operator${hostEmployeeIds.length === 1 ? "" : "s"}` });
+          return state;
+        }
+        case "cancel-booking": {
+          const booking = state.bookings.find((candidate) => candidate.id === String(body.bookingId || ""));
+          if (!booking) throw new Error("Booking not found.");
+          if (booking.status === "confirmed") {
+            booking.status = "cancelled";
+            booking.cancelledAt = timestamp();
+            addActivity(state, { type: "lead", title: `${booking.name}'s booking was cancelled`, detail: `${booking.email} · ${booking.startAt}` });
+          }
           return state;
         }
         case "create-site": {

@@ -35,6 +35,10 @@ function needsWorkspaceMigration(state: WorkspaceState) {
     && ((!Array.isArray(candidate.lists) || candidate.lists.length === 0)
       || (!Array.isArray(candidate.inboundAgents) || candidate.inboundAgents.length === 0)
       || (!Array.isArray(candidate.sites) || candidate.sites.length === 0));
+  const needsLaunchBooking = Boolean(onboarding?.discoveredAt)
+    && Array.isArray(candidate.employees)
+    && candidate.employees.some((employee) => employee.status === "live")
+    && !candidate.bookingSettings;
   const onboardingDocument = onboarding?.documentId && Array.isArray(candidate.documents)
     ? candidate.documents.find((document) => document.id === onboarding.documentId)
     : undefined;
@@ -64,12 +68,14 @@ function needsWorkspaceMigration(state: WorkspaceState) {
     || !Array.isArray(candidate.keywordMonitors)
     || !Array.isArray(candidate.inboundAgents)
     || !Array.isArray(candidate.sites)
+    || !Array.isArray(candidate.bookings)
     || !Array.isArray(candidate.apps)
     || !Array.isArray(state.workspace.onboarding?.employeeIds)
     || !Array.isArray(state.workspace.onboarding?.missionIds)
     || !Array.isArray(state.workspace.onboarding?.contentIds)
     || needsStarterSequence
     || needsLaunchSurfaces
+    || needsLaunchBooking
     || needsOnboardingKnowledgeScope;
 }
 

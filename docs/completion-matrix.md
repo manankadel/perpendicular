@@ -34,6 +34,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Native content campaign execution | Live at launch scope | Shared `campaign-runtime`, heartbeat `scheduled-campaign` lease, campaign result persisted after public-page publication |
 | Public keyword monitoring from the self-hosted Dell | Live at launch scope | `researchPublicKeyword`, `create-keyword-monitor`, `check-keyword`, Keywords view |
 | Inbound agent records, published site/landing-page routes, and session-aware public site chat | Live at launch scope | `create-inbound-agent`, `create-site`, `/site/[slug]`, `/api/site/[slug]/chat`, persisted visitor session messages |
+| Native public booking page with availability, buffers, round-robin assignment, conflict prevention, cancellation, and ICS calendar download | Live at launch scope | `/book/[slug]`, `/api/book/[slug]`, `save-booking-settings`, Postgres advisory-locked workspace write, `tests/booking.test.ts` |
 | Workspace Apps definitions with explicit activation state | Live at launch scope | `create-app`, `toggle-app`, Apps view |
 | Workspace Apps execute a saved task through a local employee | Live at launch scope | `run-app`, `/api/apps/{appId}/run`, MCP `app_run`, persisted output/score/trace, Apps view |
 | Onboarding creates a ready lead workspace, runnable public research source, content briefs, and grounded public operator page | Live at launch scope | `buildOnboardingArtifacts`, additive legacy migration, `/site/{slug}` and `/api/site/{slug}/chat` |

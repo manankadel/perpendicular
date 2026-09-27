@@ -16,8 +16,9 @@ Perpendicular is a multi-tenant AI work system. The primary user journey is:
 10. Qualified rows can enter a Sequence. After an operator activates the reviewed sequence, each Email step can be explicitly approved and sent through a connected Gmail mailbox. The send is rendered from the row, persisted with a workspace/sequence/row/step idempotency key, indexed in Inbox, and paused by reply or suppression rules. Workspace-configured daily limits, local timezone windows, weekend rules, individual-email suppression, and domain suppression are checked before the provider call. Automatic multi-step sending remains future worker work.
 11. Inbox events are normalized into conversations. Employees can draft or send only when the workspace policy allows it; otherwise a human approval gate is required.
 12. A capability-keyed website widget can receive visitor questions without exposing workspace state, route them to a selected operator, persist the conversation, and show the handoff in Inbox.
-13. Heartbeat jobs run through a Postgres-leased worker path at launch. Every run is idempotent, retryable, scored, traced, and visible in Activity; Redis is the scale-out seam.
-14. The Executive Assistant, API, and MCP surfaces call the same application commands as the web UI.
+13. A native booking page exposes real workspace availability, enforces duration and buffers, assigns confirmed slots round-robin across live operators inside the Postgres workspace lock, and provides cancellation plus an ICS download without requiring a paid calendar provider.
+14. Heartbeat jobs run through a Postgres-leased worker path at launch. Every run is idempotent, retryable, scored, traced, and visible in Activity; Redis is the scale-out seam.
+15. The Executive Assistant, API, and MCP surfaces call the same application commands as the web UI.
 
 ## Runtime layout
 

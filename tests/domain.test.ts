@@ -251,6 +251,8 @@ test("discovered workspaces receive additive lead and inbound launch surfaces", 
   assert.equal(migrated.inboundAgents[0]?.status, "live");
   assert.equal(migrated.sites[0]?.status, "published");
   assert.equal(migrated.sites[0]?.agentId, migrated.inboundAgents[0]?.id);
+  assert.equal(migrated.bookingSettings?.enabled, true);
+  assert.equal(migrated.bookingSettings?.hostEmployeeIds[0], migrated.employees[0]?.id);
 });
 
 test("ticket SLA windows follow the operational priority contract", () => {
