@@ -210,7 +210,7 @@ export async function POST(request: Request) {
 
     const pendingOnboardingDraft = snapshot.workspace.onboarding.contentIds
       .map((contentId) => snapshot.content.find((content) => content.id === contentId))
-      .find((content) => content && content.status === "draft" && !content.body);
+      .find((content) => content && ["idea", "draft"].includes(content.status) && !content.body);
     if (pendingOnboardingDraft) {
       const idempotencyKey = `onboarding-content:${companyId}:${pendingOnboardingDraft.id}`;
       const claim = await claimJob({
@@ -224,7 +224,7 @@ export async function POST(request: Request) {
           const current = await getWorkspace(companyId);
           const content = current.content.find((candidate) => candidate.id === pendingOnboardingDraft.id);
           const employee = (content?.employeeId ? current.employees.find((candidate) => candidate.id === content.employeeId) : undefined) || current.employees.find((candidate) => candidate.status === "live");
-          if (!content || content.body || content.status !== "draft" || !employee) {
+          if (!content || content.body || !["idea", "draft"].includes(content.status) || !employee) {
             await completeJob(claim);
           } else {
             if (current.workspace.aiCredits.remaining < 2) throw new Error("Not enough AI Credits for onboarding content drafting.");
@@ -234,7 +234,7 @@ export async function POST(request: Request) {
             await updateWorkspace(companyId, (state) => {
               const liveContent = state.content.find((candidate) => candidate.id === content.id);
               const liveEmployee = state.employees.find((candidate) => candidate.id === employee.id);
-              if (!liveContent || liveContent.body || liveContent.status !== "draft" || !liveEmployee) return state;
+              if (!liveContent || liveContent.body || !["idea", "draft"].includes(liveContent.status) || !liveEmployee) return state;
               const scoringStartedAt = Date.now();
               const score = scoreRun(task, result.content);
               const createdAt = timestamp();

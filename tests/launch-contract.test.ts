@@ -310,6 +310,7 @@ test("first-run onboarding produces a visible launch asset set", () => {
   assert.match(route, /enqueueJob/);
   assert.match(route, /onboarding-content-draft/);
   assert.match(route, /onboardingContent\.slice\(0, 3\)/);
+  assert.match(readFileSync(join(root, "src/app/api/cron/heartbeat/route.ts"), "utf8"), /\["idea", "draft"\]/);
   assert.match(console, /const onboardingContent = state\.content\.filter/);
   assert.match(console, /Content plan/);
   assert.match(console, /Lead research/);
