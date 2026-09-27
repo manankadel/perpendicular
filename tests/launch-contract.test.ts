@@ -267,6 +267,15 @@ test("Smart List scores expose their actual reasons", () => {
   assert.match(console, /scoreReasons/);
 });
 
+test("qualified People records can enter Smart List workflows", () => {
+  const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
+  const console = readFileSync(join(root, "src/components/PlatformViews.tsx"), "utf8");
+  assert.match(route, /case "add-person-to-list"/);
+  assert.match(route, /Qualified People record is ready for Smart List workflows/);
+  assert.match(console, /add-person-to-list/);
+  assert.match(console, /Add to \{targetList\.name\}/);
+});
+
 test("email sequence enrollment is blocked until Gmail is connected", () => {
   const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
   const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");

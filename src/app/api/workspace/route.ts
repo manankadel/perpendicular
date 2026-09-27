@@ -354,6 +354,11 @@ async function postWorkspace(request: Request): Promise<Response> {
         addActivity(state, { type: "sequence", title: `${liveRow.name} received a manual sequence task`, detail: `${step.channel} · ${step.title} · added to Missions` });
         return state;
       });
+      try {
+        await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.create-sequence-task", resourceType: "sequence", resourceId: sequence.id, metadata: { listId, rowId, stepIndex, taskTitle } });
+      } catch {
+        if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The sequence task was saved, but its audit record could not be stored." }, { status: 503 });
+      }
       return json({ state: workspaceStateForClient(next), taskTitle }, { headers: rateLimitHeaders(identity.context) });
     }
 
@@ -1305,6 +1310,17 @@ async function postWorkspace(request: Request): Promise<Response> {
           person.tags = [...new Set([...person.tags, lead.intent])].slice(0, 12);
           person.updatedAt = timestamp();
           addActivity(state, { type: "lead", title: `${person.name} was qualified`, detail: `Public evidence captured · score ${person.score}` });
+          return state;
+        }
+        case "add-person-to-list": {
+          const person = state.people.find((candidate) => candidate.id === String(body.personId || ""));
+          const list = state.lists.find((candidate) => candidate.id === String(body.listId || ""));
+          if (!person || !list) throw new Error("Person or Smart List not found.");
+          if (person.status !== "qualified") throw new Error("Qualify the person with public evidence before moving them into a Smart List.");
+          if (state.lists.some((candidate) => candidate.rows.some((row) => row.email.toLowerCase() === person.email.toLowerCase()))) throw new Error("This person is already in a Smart List in this workspace.");
+          list.rows.unshift({ id: createId("row"), name: person.name, email: person.email, company: person.company, role: person.title, location: person.location, score: person.score, scoreReasons: ["Moved from qualified People record"], status: "enriched", emailStatus: "unknown", intent: "Public context captured", companyInsight: person.notes || "Public company evidence captured in People.", enrollmentStatus: "not enrolled", lastAction: `Moved from People into ${list.name}` });
+          list.updatedAt = timestamp();
+          addActivity(state, { type: "lead", title: `${person.name} moved into ${list.name}`, detail: "Qualified People record is ready for Smart List workflows" });
           return state;
         }
         case "create-lead-source": {
