@@ -37,6 +37,25 @@ export function openAiResponse(result: HeadlessChatResult, request: Request, str
   return new Response(streamBody, { headers: { ...corsHeadersFor(request), "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" } });
 }
 
-export function anthropicResponse(result: HeadlessChatResult, request: Request) {
-  return corsJson({ id: `msg_${result.employeeId}_${Date.now()}`, type: "message", role: "assistant", model: result.model, content: [{ type: "text", text: result.content }], stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: tokenEstimate(result.content), output_tokens: tokenEstimate(result.content) }, perpendicular: { employee_id: result.employeeId, employee: result.employeeName, provider: result.provider, citations: result.citations, timings: result.timings } }, undefined, request);
+export function anthropicResponse(result: HeadlessChatResult, request: Request, stream = false) {
+  const id = `msg_${result.employeeId}_${Date.now()}`;
+  const usage = { input_tokens: tokenEstimate(result.content), output_tokens: tokenEstimate(result.content) };
+  if (!stream) {
+    return corsJson({ id, type: "message", role: "assistant", model: result.model, content: [{ type: "text", text: result.content }], stop_reason: "end_turn", stop_sequence: null, usage, perpendicular: { employee_id: result.employeeId, employee: result.employeeName, provider: result.provider, citations: result.citations, timings: result.timings } }, undefined, request);
+  }
+  const encoder = new TextEncoder();
+  const pieces = result.content.match(/.{1,120}(?:\s|$)/g)?.map((piece) => piece.trim()).filter(Boolean) || [result.content];
+  const event = (name: string, payload: unknown) => encoder.encode(`event: ${name}\ndata: ${JSON.stringify(payload)}\n\n`);
+  const streamBody = new ReadableStream({
+    start(controller) {
+      controller.enqueue(event("message_start", { type: "message_start", message: { id, type: "message", role: "assistant", model: result.model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: usage.input_tokens, output_tokens: 0 } } }));
+      controller.enqueue(event("content_block_start", { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }));
+      for (const piece of pieces) controller.enqueue(event("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: piece } }));
+      controller.enqueue(event("content_block_stop", { type: "content_block_stop", index: 0 }));
+      controller.enqueue(event("message_delta", { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: usage.output_tokens } }));
+      controller.enqueue(event("message_stop", { type: "message_stop" }));
+      controller.close();
+    },
+  });
+  return new Response(streamBody, { headers: { ...corsHeadersFor(request), "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" } });
 }

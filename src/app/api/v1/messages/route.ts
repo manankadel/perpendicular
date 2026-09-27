@@ -16,10 +16,9 @@ export async function POST(request: Request) {
   try { body = await request.json() as Record<string, unknown>; } catch { return apiError("Request body must be valid JSON.", 400, request); }
   const messages = normalizeHeadlessMessages(body.messages);
   if (!messages.length) return apiError("messages must contain at least one user message.", 400, request);
-  if (body.stream === true) return apiError("Streaming Anthropic responses is not supported yet; use stream: false.", 400, request);
   try {
     const result = await executeHeadlessChat({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, employeeId: typeof body.employee_id === "string" ? body.employee_id : typeof body.agent_id === "string" ? body.agent_id : undefined, messages, model: typeof body.model === "string" && body.model.trim() ? body.model.trim() : "perpendicular-local" });
-    const response = anthropicResponse(result, request);
+    const response = anthropicResponse(result, request, body.stream === true);
     for (const [name, value] of Object.entries(rateLimitHeaders(identity.context))) response.headers.set(name, value);
     return response;
   } catch (error) {

@@ -308,6 +308,8 @@ test("email sequence enrollment is blocked until Gmail is connected", () => {
   const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
   const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
   assert.match(route, /Connect Gmail before enrolling a lead in an email sequence/);
+  assert.match(route, /Connect Gmail before running this enrollment action/);
+  assert.match(route, /Activate the sequence after reviewing its steps before running this action/);
   assert.match(console, /Connect Gmail to enroll/);
   assert.match(console, /create-sequence-task/);
 });

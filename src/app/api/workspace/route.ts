@@ -916,6 +916,24 @@ async function postWorkspace(request: Request): Promise<Response> {
           const action = list?.actions?.find((item) => item.id === String(body.actionId || ""));
           if (!list || !action) throw new Error("List action not found.");
           if (!action.active) throw new Error("This list action is paused.");
+          const enrollmentSequence = action.type === "enroll" && action.sequenceId
+            ? state.sequences.find((sequence) => sequence.id === action.sequenceId)
+            : undefined;
+          if (action.type === "enroll") {
+            if (!enrollmentSequence) throw new Error("The action sequence no longer exists.");
+            if (enrollmentSequence.status !== "live") throw new Error("Activate the sequence after reviewing its steps before running this action.");
+            if (sequenceRequiresGmail(enrollmentSequence)) {
+              let integrations;
+              try {
+                integrations = await listIntegrationSummaries(companyId);
+              } catch {
+                throw new Error("Gmail connection status is unavailable. Apply the platform database migration.");
+              }
+              if (integrations.find((integration) => integration.provider === "gmail")?.status !== "connected") {
+                throw new Error("Connect Gmail before running this enrollment action.");
+              }
+            }
+          }
           const rows = list.rows.filter((row) => listActionMatches(action, row)).slice(0, 50);
           if (!rows.length) {
             action.lastRunAt = timestamp();
@@ -950,7 +968,7 @@ async function postWorkspace(request: Request): Promise<Response> {
               if (!state.suppressedEmails.includes(email)) state.suppressedEmails.push(email);
               row.lastAction = "Batch suppressed for this workspace";
             } else if (action.type === "enroll") {
-              const sequence = action.sequenceId ? state.sequences.find((candidate) => candidate.id === action.sequenceId) : undefined;
+              const sequence = enrollmentSequence;
               if (!sequence) throw new Error("The action sequence no longer exists.");
               if (row.status !== "enriched" || state.suppressedEmails.includes(row.email.toLowerCase()) || row.enrollmentStatus === "enrolled") continue;
               row.enrollmentStatus = "enrolled";
