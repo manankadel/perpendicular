@@ -6,7 +6,7 @@ This is the implementation truth for the supplied product and audit documents. A
 
 | Area | Status | Evidence |
 | --- | --- | --- |
-| Product-owned sign-in with Blueblood ID session authority | Live | `src/app/api/auth/*`, `src/lib/identity.ts`, auth tests |
+| Product-owned sign-in with Blueblood ID session authority | Live | `src/app/api/auth/*`, `src/lib/identity.ts`, auth tests; Google OAuth MFA now returns to the Perpendicular login screen through a short-lived HttpOnly handoff cookie |
 | Workspace discovery from a real public URL or operator brief | Live | `bootstrap-workspace`, `src/lib/public-research.ts` |
 | Discovery creates a usable operator pod, company profile, missions, three content briefs, a persisted public research source, and a five-step draft sequence | Live | `buildOnboardingArtifacts`, `bootstrap-workspace`, onboarding UI, domain migration tests |
 | Onboarding proof gate and explicit manual-vs-heartbeat handoff | Live | `proved` onboarding state, first mission linkage, `finish-onboarding`, `enable-onboarding-schedule`, onboarding UI |
@@ -49,7 +49,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Webhook catalog and dead-letter replay controls | Implemented; provider E2E pending | `/api/ops`, Settings → Operations |
 | Operational health counts for dead letters, failed webhooks, and degraded integrations | Live and deployed | `/api/health`, required schema includes outbound send records |
 | Dell local backup schedule, clean-database restore rehearsal, and off-machine copy | Live | Root cron at 02:15, verified custom-format dump, restore into `perpendicular_restore_check` with 13 platform tables, and Mac launchd pull of `/opt/blueblood/backups/perpendicular` via the existing least-privilege sudo rule |
-| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:a6d365cf5b4135d24dc6f32f225d1e59f40be4ac8177cac8ccfeb7f4a33ba217`, commit `7d4edb0`, ten checks including public site delivery and booking availability, 2026-09-27 |
+| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:0cc44dd0f1855b5bbcce7667b0808f9942ac4d8d552999688e084f163ea0558f`, commit `894a906`, ten checks including public site delivery and booking availability, 2026-09-27 |
 | Dell heartbeat trigger | Live and verified on the host | Root-owned `/usr/local/sbin/perpendicular-heartbeat`, `flock` lock, API-origin request, and successful authenticated tick on 2026-09-26 |
 | CI verification before image publication | Live | `.github/workflows/perpendicular-image.yml` runs check and production audit before publish |
 
@@ -105,5 +105,7 @@ Read-only checks on 2026-09-27 found:
 - A fresh self-serve workspace was exercised end to end on Dell: signup, session establishment, public discovery, lead research, first Ollama proof, and persisted `proved` onboarding all returned successfully; the proof request completed in 49.6 seconds, and the heartbeat subsequently processed the first queued launch draft into `review` with a real output and ledger decrement. No external email was sent.
 - The existing Dell Gmail row for `manankadel@gmail.com` was inspected without reading its refresh token: it was marked connected but contained only identity scopes. Release `a31adfa` classifies that state as degraded in the integration UI, blocks mailbox actions with an explicit reconnect message, and only marks a new OAuth connection connected when both `gmail.modify` and `gmail.send` are present. Release `bc829fa` extends the same truthfulness to `/api/health`; the live health response reports `degradedIntegrations: 1` and warning `degraded_integrations`.
 - Product-owned Google sign-in/MFA and Gmail OAuth are implemented and configured; the complete test-send → reply → sync → sequence-pause evidence is still outstanding.
+- Google OAuth was re-verified after the auth release: the live API starts at Google, the signed OAuth state contains the allowlisted Perpendicular MFA handoff, and the handoff returns `303` to `/login?google_mfa=1` while storing the challenge as `HttpOnly; Secure; Path=/api/auth`. The identity portal is running the product-owned MFA redirect build; completing the final six-digit challenge still requires the operator in the browser.
+- The Git-connected Vercel production deployment for `894a906` is `READY` at `perpendicular-nine.vercel.app`; a manual CLI promotion was rate-limited by Vercel's free daily deployment quota, but the automatic Git deployment completed successfully.
 - A second disposable Blueblood ID account received an isolated empty workspace (`personal-47`) while the audit workspace remained populated as `personal-46`; no cross-tenant records were returned.
 - A disposable scoped API key was created, used against `/api/integrations`, and revoked; the live response returned its name, prefix, scopes, and one-time secret metadata correctly.
