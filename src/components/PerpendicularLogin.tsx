@@ -14,7 +14,15 @@ type LoginResponse = {
   error?: string;
 };
 
-export default function PerpendicularLogin({ next, initialError, initialGoogleMfa = false }: { next: string; initialError?: string; initialGoogleMfa?: boolean }) {
+export default function PerpendicularLogin({
+  next,
+  initialError,
+  initialGoogleMfa = false,
+}: {
+  next: string;
+  initialError?: string;
+  initialGoogleMfa?: boolean;
+}) {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -64,9 +72,7 @@ export default function PerpendicularLogin({ next, initialError, initialGoogleMf
         return;
       }
       const sessionCheck = await fetch(`${apiBase}/api/workspace`, { credentials: "include", cache: "no-store" });
-      if (sessionCheck.status === 401) {
-        throw new Error("Your credentials were accepted, but the workspace session was not established. Try again or use Google sign-in.");
-      }
+      if (sessionCheck.status === 401) throw new Error("Your credentials were accepted, but the workspace session was not established. Try again.");
       if (!sessionCheck.ok && sessionCheck.status !== 503) {
         const sessionData = await sessionCheck.json().catch(() => ({})) as LoginResponse;
         throw new Error(sessionData.error || "Your session could not be verified. Try again.");
@@ -87,5 +93,44 @@ export default function PerpendicularLogin({ next, initialError, initialGoogleMf
     setError(null);
   };
 
-  return <main className="auth-shell"><div className="auth-orbit auth-orbit-one" /><div className="auth-orbit auth-orbit-two" /><div className="auth-frame"><div className="auth-brand"><span className="brand-mark" /><span>perpendicular<span className="brand-meta">open work system</span></span></div><section className="auth-card"><div className="eyebrow">Workspace access</div><div className="auth-mode-switch" role="tablist" aria-label="Account access"><button type="button" role="tab" aria-selected={mode === "login"} className={mode === "login" ? "auth-mode active" : "auth-mode"} onClick={() => switchMode("login")}>Sign in</button><button type="button" role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "auth-mode active" : "auth-mode"} onClick={() => switchMode("signup")}>Create workspace</button></div><h1>{mode === "signup" ? "Start your workspace" : "Sign in to Perpendicular"}</h1><p className="auth-intro">{mode === "signup" ? "Create your account here, then turn your real context into working operators." : "Your employees, knowledge, and work traces are waiting on the Dell."}</p>{!mfaToken ? <a className="button-secondary auth-submit" href={`${apiBase}/api/auth/google/start?next=${encodeURIComponent(next)}`}>Continue with Google <ArrowUpRight size={14} /></a> : null}<div className="auth-divider"><span>{mode === "signup" ? "or create with email" : "or use your workspace account"}</span></div><form onSubmit={submit} className="auth-form">{mfaToken ? <><div className="auth-step"><span className="auth-step-number">2</span><div><strong>Verify your identity</strong><span>Enter the code from your authenticator app or use a backup code.</span></div></div><div className="field"><label htmlFor="mfa-code">Security code</label><input id="mfa-code" inputMode="numeric" autoComplete="one-time-code" required value={code} onChange={(event) => setCode(event.target.value)} placeholder={mfaType === "totp" ? "000000" : "XXXX-XXXX"} /></div><div className="auth-methods"><button type="button" className={mfaType === "totp" ? "auth-method active" : "auth-method"} onClick={() => setMfaType("totp")}>Authenticator</button><button type="button" className={mfaType === "backup" ? "auth-method active" : "auth-method"} onClick={() => setMfaType("backup")}>Backup code</button></div></> : <><div className="auth-step"><span className="auth-step-number">1</span><div><strong>{mode === "signup" ? "Create your workspace account" : "Use your workspace account"}</strong><span>{mode === "signup" ? "No card. No separate identity portal." : "Sign in securely without leaving Perpendicular."}</span></div></div>{mode === "signup" ? <div className="auth-name-fields"><div className="field"><label htmlFor="signup-first-name">First name</label><input id="signup-first-name" autoComplete="given-name" required value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="Your first name" /></div><div className="field"><label htmlFor="signup-last-name">Last name</label><input id="signup-last-name" autoComplete="family-name" value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="Optional" /></div></div> : null}<div className="field"><label htmlFor="login-email">Email</label><input id="login-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" /></div><div className="field"><label htmlFor="login-password">Password</label><input id="login-password" type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} required minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={mode === "signup" ? "At least 8 characters" : "Your password"} /></div>{mode === "signup" ? <div className="field"><label htmlFor="signup-confirm-password">Confirm password</label><input id="signup-confirm-password" type="password" autoComplete="new-password" required minLength={8} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Repeat your password" /></div> : null}</>}{error ? <div className="auth-error" role="alert">{error}</div> : null}<button type="submit" className="button-primary auth-submit" disabled={busy}>{busy ? mode === "signup" ? "Creating…" : "Checking…" : mfaToken ? "Verify and continue" : mode === "signup" ? "Create workspace" : "Sign in"}<ArrowUpRight size={14} /></button>{mfaToken ? <button type="button" className="button-quiet auth-back" onClick={() => { setMfaToken(null); setCode(""); setError(null); }}>Use a different account</button> : null}</form><div className="auth-trust"><ShieldCheck size={15} /><span>Session is encrypted, HttpOnly, and scoped to your Perpendicular workspace.</span></div></section><p className="auth-footer">Open source infrastructure · Dell runtime · Postgres persistence</p></div></main>;
+  const showingMfa = Boolean(mfaToken);
+
+  return (
+    <main className="auth-shell">
+      <div className="auth-orbit auth-orbit-one" />
+      <div className="auth-orbit auth-orbit-two" />
+      <div className="auth-frame">
+        <div className="auth-brand"><span className="brand-mark" /><span>perpendicular<span className="brand-meta">open work system</span></span></div>
+        <section className="auth-card">
+          <div className="eyebrow">Workspace access</div>
+          {!showingMfa ? <div className="auth-mode-switch" role="tablist" aria-label="Account access">
+            <button type="button" role="tab" aria-selected={mode === "login"} className={mode === "login" ? "auth-mode active" : "auth-mode"} onClick={() => switchMode("login")}>Sign in</button>
+            <button type="button" role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "auth-mode active" : "auth-mode"} onClick={() => switchMode("signup")}>Create workspace</button>
+          </div> : null}
+          <h1>{showingMfa ? "Finish Google sign-in" : mode === "signup" ? "Start your workspace" : "Sign in to Perpendicular"}</h1>
+          <p className="auth-intro">{showingMfa ? "Confirm your identity here to finish signing in to Perpendicular." : mode === "signup" ? "Create your account here, then turn your real context into working operators." : "Your employees, knowledge, and work traces are waiting on the Dell."}</p>
+          {!showingMfa ? <a className="button-secondary auth-submit" href={`${apiBase}/api/auth/google/start?next=${encodeURIComponent(next)}`}>Continue with Google <ArrowUpRight size={14} /></a> : null}
+          {!showingMfa ? <div className="auth-divider"><span>{mode === "signup" ? "or create with email" : "or use your workspace account"}</span></div> : null}
+          <form onSubmit={submit} className="auth-form">
+            {showingMfa ? <>
+              <div className="auth-step"><span className="auth-step-number">2</span><div><strong>Verify your identity</strong><span>Enter the code from your authenticator app or use a backup code.</span></div></div>
+              <div className="field"><label htmlFor="mfa-code">Security code</label><input id="mfa-code" inputMode="numeric" autoComplete="one-time-code" required value={code} onChange={(event) => setCode(event.target.value)} placeholder={mfaType === "totp" ? "000000" : "XXXX-XXXX"} /></div>
+              <div className="auth-methods"><button type="button" className={mfaType === "totp" ? "auth-method active" : "auth-method"} onClick={() => setMfaType("totp")}>Authenticator</button><button type="button" className={mfaType === "backup" ? "auth-method active" : "auth-method"} onClick={() => setMfaType("backup")}>Backup code</button></div>
+            </> : <>
+              <div className="auth-step"><span className="auth-step-number">1</span><div><strong>{mode === "signup" ? "Create your workspace account" : "Use your workspace account"}</strong><span>{mode === "signup" ? "No card. No separate identity portal." : "Sign in securely without leaving Perpendicular."}</span></div></div>
+              {mode === "signup" ? <div className="auth-name-fields"><div className="field"><label htmlFor="signup-first-name">First name</label><input id="signup-first-name" autoComplete="given-name" required value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="Your first name" /></div><div className="field"><label htmlFor="signup-last-name">Last name</label><input id="signup-last-name" autoComplete="family-name" value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="Optional" /></div></div> : null}
+              <div className="field"><label htmlFor="login-email">Email</label><input id="login-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" /></div>
+              <div className="field"><label htmlFor="login-password">Password</label><input id="login-password" type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} required minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={mode === "signup" ? "At least 8 characters" : "Your password"} /></div>
+              {mode === "signup" ? <div className="field"><label htmlFor="signup-confirm-password">Confirm password</label><input id="signup-confirm-password" type="password" autoComplete="new-password" required minLength={8} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Repeat your password" /></div> : null}
+            </>}
+            {error ? <div className="auth-error" role="alert">{error}</div> : null}
+            <button type="submit" className="button-primary auth-submit" disabled={busy}>{busy ? mode === "signup" ? "Creating…" : "Checking…" : showingMfa ? "Verify and continue" : mode === "signup" ? "Create workspace" : "Sign in"}<ArrowUpRight size={14} /></button>
+            {showingMfa ? <button type="button" className="button-quiet auth-back" onClick={() => { setMfaToken(null); setGoogleMfa(false); setCode(""); setError(null); }}>Use a different account</button> : null}
+          </form>
+          <div className="auth-trust"><ShieldCheck size={15} /><span>Session is encrypted, HttpOnly, and scoped to your Perpendicular workspace.</span></div>
+        </section>
+        <p className="auth-footer">Open source infrastructure · Dell runtime · Postgres persistence</p>
+      </div>
+    </main>
+  );
 }
