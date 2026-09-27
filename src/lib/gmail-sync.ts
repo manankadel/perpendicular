@@ -6,6 +6,7 @@ import { upsertGmailMessage } from "@/lib/inbox-store";
 import { addActivity, createId, ticketSlaMinutes, timestamp, type Ticket } from "@/lib/domain";
 import { updateWorkspace } from "@/lib/server-store";
 import { containsUnsubscribeRequest } from "@/lib/compliance";
+import { bouncedAddresses, looksLikeBounce } from "@/lib/deliverability";
 
 function emailAddress(value: string) {
   return value.match(/<([^>]+)>/)?.[1]?.toLowerCase() || value.trim().toLowerCase();
@@ -42,6 +43,7 @@ export async function syncGmailWorkspace(workspaceId: string, requestedHistoryId
   const gmail = summaries.find((integration) => integration.provider === "gmail");
   const repliedEmails = new Set<string>();
   const unsubscribeEmails = new Set<string>();
+  const bouncedEmails = new Set<string>();
   const messageHistoryIds: string[] = [];
   const inboundMessages: Array<{ id: string; sender: string; subject: string; bodyText: string; receivedAt: string }> = [];
   let insertedCount = 0;
@@ -65,6 +67,7 @@ export async function syncGmailWorkspace(workspaceId: string, requestedHistoryId
     if (isInbound) {
       repliedEmails.add(sender);
       if (containsUnsubscribeRequest(message.subject, message.bodyText)) unsubscribeEmails.add(sender);
+      if (looksLikeBounce({ from: sender, subject: message.subject, bodyText: message.bodyText })) for (const address of bouncedAddresses({ subject: message.subject, bodyText: message.bodyText })) bouncedEmails.add(address);
       if (persisted.inserted) inboundMessages.push({ id: message.id, sender, subject: message.subject, bodyText: message.bodyText, receivedAt: message.date });
     }
     if (message.historyId) messageHistoryIds.push(message.historyId);
@@ -103,6 +106,17 @@ export async function syncGmailWorkspace(workspaceId: string, requestedHistoryId
     }
     for (const list of workspace.lists) for (const row of list.rows) {
       const email = row.email.toLowerCase();
+      if (bouncedEmails.has(email)) {
+        if (!workspace.suppressedEmails.includes(email)) {
+          workspace.suppressedEmails.push(email);
+          addActivity(workspace, { type: "lead", title: `${row.name} was quarantined after a bounce`, detail: "Gmail delivery failure detected · future outbound sends blocked" });
+        }
+        if (row.enrollmentStatus === "enrolled") {
+          row.sequenceStatus = "paused";
+          row.lastAction = "Bounce detected in Gmail · sequence paused and address quarantined";
+        }
+        continue;
+      }
       if (unsubscribeEmails.has(email)) {
         if (!workspace.suppressedEmails.includes(email)) {
           workspace.suppressedEmails.push(email);

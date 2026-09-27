@@ -77,7 +77,7 @@ All tenant-owned tables include `workspace_id`, indexes begin with that key wher
 - The launch runner is a host-triggered heartbeat endpoint. It scans persisted due schedules, claims `perpendicular_jobs` with a lease and idempotency key, runs only due employees, and advances the next run time after success.
 - The launch worker uses Postgres leases for restart safety. API-key and public-widget rate limits use durable Postgres counters with a bounded in-memory fallback during a database outage; Redis remains the scale-out seam for queue partitioning.
 - Credit consumption is persisted in `perpendicular_usage_ledger` and exposed through `/api/usage`; the aggregate credit balance remains the fast product guardrail.
-- Gmail sync is explicit and deduplicates by provider message ID. The first Email step is approval-gated and protected by a durable outbound idempotency record plus workspace outbound safety rules; automatic later-step scheduling is intentionally not claimed until a sender worker exists.
+- Gmail sync is explicit and deduplicates by provider message ID. Delivery-failure messages quarantine the extracted recipient addresses and pause matching sequence rows. The first Email step is approval-gated and protected by a durable outbound idempotency record plus workspace outbound safety rules; automatic later-step scheduling is intentionally not claimed until a sender worker exists.
 - Heartbeat jobs use bounded retries and a dead-letter state; no UI may report a background job as complete before its persisted result exists.
 - Provider webhooks are persisted before processing and deduplicated by provider event ID.
 - A worker restart must be safe: a job can run twice without sending a duplicate message or charging twice. An outbound request with an unknown provider outcome is held for reconciliation rather than retried blindly.
@@ -111,4 +111,4 @@ The product is launchable only when all of these are true:
 
 ## Deliberate non-claims
 
-The app must not claim 1,000 integrations, verified enrichment, deliverability, CRM attribution, voice, WhatsApp, LinkedIn automation, billing, or enterprise compliance until each adapter has a working provider contract, persisted state, failure handling, and an end-to-end test.
+The app must not claim 1,000 integrations, warmup or inbox-rotation guarantees, verified enrichment, voice, WhatsApp, LinkedIn automation, billing, or enterprise compliance until each adapter has a working provider contract, persisted state, failure handling, and an end-to-end test. Launch scope does include DNS diagnostics, bounce quarantine, and persisted revenue attribution.

@@ -51,6 +51,7 @@ import { createDealInState, updateDealInState, type CreateDealInput } from "@/li
 import { publishContentInState, scheduleContentInState } from "@/lib/content-runtime";
 import { scheduleCampaignInState } from "@/lib/campaign-runtime";
 import { executeCampaignBroadcast } from "@/lib/campaign-send-runtime";
+import { checkDomainDeliverability } from "@/lib/deliverability";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -225,7 +226,7 @@ async function postWorkspace(request: Request): Promise<Response> {
   if (!action) return json({ error: "Missing action." }, { status: 400 });
   const requiredPermission = "workspace:write";
   if (!hasPermission(identity.context, requiredPermission)) return json({ error: "You do not have permission for this action." }, { status: 403 });
-  if (["update-outbound-safety", "suppress-domain", "unsuppress-domain"].includes(action) && !hasPermission(identity.context, "settings:write")) {
+  if (["update-outbound-safety", "suppress-domain", "unsuppress-domain", "check-deliverability"].includes(action) && !hasPermission(identity.context, "settings:write")) {
     return json({ error: "You do not have permission to change outbound safety settings." }, { status: 403 });
   }
 
@@ -674,8 +675,17 @@ async function postWorkspace(request: Request): Promise<Response> {
       return json({ state: workspaceStateForClient(next), provider: result.provider }, { headers: rateLimitHeaders(identity.context) });
     }
 
+    const deliverabilityResult = action === "check-deliverability"
+      ? await checkDomainDeliverability({ domain: String(body.domain || ""), dkimSelector: String(body.dkimSelector || "") || null, id: createId("deliverability") })
+      : null;
     const updated = await updateWorkspace(companyId, async (state) => {
       switch (action) {
+        case "check-deliverability": {
+          if (!deliverabilityResult) throw new Error("Deliverability check did not return a result.");
+          state.deliverabilityChecks = [deliverabilityResult, ...state.deliverabilityChecks.filter((check) => check.domain !== deliverabilityResult.domain)].slice(0, 20);
+          addActivity(state, { type: "system", title: `Deliverability checked for ${deliverabilityResult.domain}`, detail: `MX ${deliverabilityResult.mx.status} · SPF ${deliverabilityResult.spf.status} · DMARC ${deliverabilityResult.dmarc.status}` });
+          return state;
+        }
         case "update-profile": {
           const nextProfile = { ...state.profile };
           for (const key of ["industry", "website", "description", "idealCustomer", "brandVoice", "timezone"] as const) {

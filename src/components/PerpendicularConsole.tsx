@@ -44,6 +44,7 @@ import type { DeadLetterJob } from "@/lib/job-store";
 import type { WebhookEventSummary } from "@/lib/integration-store";
 import { sequenceRequiresGmail } from "@/lib/sequence";
 import { creditForecast } from "@/lib/usage-forecast";
+import type { DeliverabilityCheck } from "@/lib/deliverability";
 import { PlatformView, type PlatformViewName } from "@/components/PlatformViews";
 
 type View = "overview" | "missions" | "employees" | "knowledge" | "content" | "lists" | "sequences" | "inbox" | "playbooks" | "activity" | "settings" | PlatformViewName;
@@ -718,6 +719,35 @@ function OutboundSafetyCard({ state }: { state: WorkspaceState }) {
   return <section className="panel"><PanelHeader title="Outbound safety" caption="Persisted guardrails applied before every Gmail send." /><div className="form-card"><div className="form-grid"><div className="field"><label htmlFor="daily-send-limit">Daily send limit</label><input id="daily-send-limit" type="number" min={1} max={10000} value={settings.dailySendLimit} onChange={(event) => update({ dailySendLimit: Number(event.target.value) })} /><small className="field-hint">Counts successful sends in this workspace&apos;s local day.</small></div><div className="field"><label htmlFor="send-timezone">Timezone</label><select id="send-timezone" value={settings.timezone} onChange={(event) => update({ timezone: event.target.value })}>{!timezones.includes(settings.timezone) ? <option value={settings.timezone}>{settings.timezone}</option> : null}{timezones.map((timezone) => <option key={timezone}>{timezone}</option>)}</select></div></div><div className="form-grid"><div className="field"><label htmlFor="send-window-start">Window starts</label><input id="send-window-start" type="time" value={settings.sendWindowStart} onChange={(event) => update({ sendWindowStart: event.target.value })} /></div><div className="field"><label htmlFor="send-window-end">Window ends</label><input id="send-window-end" type="time" value={settings.sendWindowEnd} onChange={(event) => update({ sendWindowEnd: event.target.value })} /></div></div><label className="checkbox-row"><input type="checkbox" checked={settings.skipWeekends} onChange={(event) => update({ skipWeekends: event.target.checked })} /> Skip Saturday and Sunday</label><button className="button-primary" type="button" onClick={() => void saveSettings(settings)} disabled={busy}>{busy ? "Saving…" : "Save outbound rules"}<ShieldCheck size={13} /></button><div className="setting-description">Perpendicular does not pretend to provide SPF, DKIM, DMARC, warmup, bounce, or complaint verification. Those still belong to your mail provider and DNS. These controls govern what this workspace is allowed to send.</div><div className="field"><label htmlFor="suppressed-domain">Suppress a domain</label><div className="form-actions"><input id="suppressed-domain" type="text" value={domain} onChange={(event) => setDomain(event.target.value)} placeholder="example.com" onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void suppressDomain(); } }} /><button className="button-secondary" type="button" onClick={() => void suppressDomain()} disabled={busy || !domain.trim()}>Suppress</button></div></div>{settings.suppressedDomains.length ? <div className="health-log">{settings.suppressedDomains.map((value) => <div className="setting-row" key={value}><div><div className="setting-name">{value}</div><div className="setting-description">This domain and its subdomains are blocked.</div></div><button className="small-button" type="button" onClick={() => void unsuppressDomain(value)} disabled={busy}>Remove</button></div>)}</div> : <div className="list-meta">No suppressed domains. Individual email suppression remains available from Smart Lists.</div>}{message ? <div className="list-meta" role="status">{message}</div> : null}</div></section>;
 }
 
+function DeliverabilityCard({ state }: { state: WorkspaceState }) {
+  const [domain, setDomain] = useState(() => state.profile.website?.replace(/^https?:\/\//, "").replace(/\/.*$/, "") || "");
+  const [dkimSelector, setDkimSelector] = useState("");
+  const [checks, setChecks] = useState<DeliverabilityCheck[]>(state.deliverabilityChecks || []);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const run = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const response = await fetch(apiPath("/api/workspace"), { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "check-deliverability", domain, dkimSelector }) });
+      const payload = await response.json().catch(() => ({})) as WorkspaceState & { error?: string };
+      if (!response.ok || !payload.deliverabilityChecks) throw new Error(payload.error || "Deliverability could not be checked.");
+      setChecks(payload.deliverabilityChecks);
+      setMessage(`Checked ${domain}. DNS results are persisted in this workspace.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Deliverability could not be checked.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const latest = checks[0];
+  const record = (label: string, item: DeliverabilityCheck["mx"]) => {
+    const status = item.status;
+    return <div className="setting-row" key={label}><div><div className="setting-name">{label}</div><div className="setting-description">{item.detail}</div>{item.values.length ? <div className="list-meta">{item.values.join(" · ")}</div> : null}</div><span className={`status-pill ${status === "pass" ? "live" : status === "missing" ? "paused" : ""}`}>{status}</span></div>;
+  };
+  return <section className="panel"><PanelHeader title="Deliverability diagnostics" caption="Real DNS checks from the Dell. No warmup or inbox guarantee is implied." /><div className="form-card"><div className="form-grid"><div className="field"><label htmlFor="deliverability-domain">Sending domain</label><input id="deliverability-domain" value={domain} onChange={(event) => setDomain(event.target.value)} placeholder="example.com" /></div><div className="field"><label htmlFor="deliverability-dkim-selector">DKIM selector <span className="field-hint">optional</span></label><input id="deliverability-dkim-selector" value={dkimSelector} onChange={(event) => setDkimSelector(event.target.value)} placeholder="google" /></div></div><button className="button-primary" type="button" onClick={() => void run()} disabled={busy || !domain.trim()}>{busy ? "Checking DNS…" : "Check domain health"}<ShieldCheck size={13} /></button>{message ? <div className="list-meta" role="status">{message}</div> : null}</div>{latest ? <div className="health-log">{record("MX", latest.mx)}{record("SPF", latest.spf)}{record("DMARC", latest.dmarc)}{record("DKIM", latest.dkim)}<div className="list-meta">Last checked {relativeTime(latest.checkedAt)} · bounce and delivery-failure messages are automatically quarantined by Gmail sync.</div></div> : <div className="empty-state">Check the domain used by your connected Gmail mailbox to see its actual MX, SPF, DMARC, and optional DKIM records.</div>}</section>;
+}
+
 function SettingsView({ state, usage }: { state: WorkspaceState; usage: UsageSummary | null }) {
   const rawGmail = state.integrations?.find((integration) => integration.provider === "gmail");
   const gmailNotConfigured = rawGmail?.status === "not_configured";
@@ -874,6 +904,7 @@ function SettingsView({ state, usage }: { state: WorkspaceState; usage: UsageSum
     {settingsMessage ? <div className="notice" role="alert">{settingsMessage}</div> : null}
     <div className="settings-grid">
       <OutboundSafetyCard state={state} />
+      <DeliverabilityCard state={state} />
       <WidgetSettingsCard state={state} />
       <section className="panel">
         <PanelHeader title="Workspace contract" caption={`Company boundary: ${state.workspace.id}`} />

@@ -7,7 +7,7 @@ import type { WorkspaceState } from "../src/lib/domain";
 function state(): WorkspaceState {
   return {
     workspace: { id: "test", name: "Test", plan: "Open Source", aiCredits: { remaining: 10, limit: 10 }, dataCredits: { remaining: 10, purchased: 10 }, region: "LAN / Dell", model: "test", onboarding: {} as WorkspaceState["workspace"]["onboarding"] },
-    profile: {} as WorkspaceState["profile"], members: [], employees: [], documents: [], conversations: [], widget: {} as WorkspaceState["widget"], widgetConversations: [], attributionTouches: [], runs: [], missions: [], content: [], playbooks: [], lists: [], sequences: [], schedules: [], people: [], deals: [], leadSources: [], campaigns: [], keywordMonitors: [], inboundAgents: [], sites: [], apps: [], tickets: [], activity: [], suppressedEmails: [], outboundSafety: {} as WorkspaceState["outboundSafety"], integrations: [],
+    profile: {} as WorkspaceState["profile"], members: [], employees: [], documents: [], conversations: [], widget: {} as WorkspaceState["widget"], widgetConversations: [], attributionTouches: [], deliverabilityChecks: [], runs: [], missions: [], content: [], playbooks: [], lists: [], sequences: [], schedules: [], people: [], deals: [], leadSources: [], campaigns: [], keywordMonitors: [], inboundAgents: [], sites: [], apps: [], tickets: [], activity: [], suppressedEmails: [], outboundSafety: {} as WorkspaceState["outboundSafety"], integrations: [],
   };
 }
 

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { defaultOutboundSafetySettings, normalizeOutboundSafetySettings, type OutboundSafetySettings } from "@/lib/outbound-safety";
 import { createAttributionTouch, type AttributionSummary, type AttributionTouch } from "@/lib/attribution";
+import type { DeliverabilityCheck } from "@/lib/deliverability";
 
 export type { OutboundSafetySettings } from "@/lib/outbound-safety";
 
@@ -457,6 +458,7 @@ export type WorkspaceState = {
   widget: WidgetSettings;
   widgetConversations: WidgetConversation[];
   attributionTouches: AttributionTouch[];
+  deliverabilityChecks: DeliverabilityCheck[];
   runs: Run[];
   missions: Mission[];
   content: ContentItem[];
@@ -810,6 +812,7 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
       attribution: normalizeAttributionTouch(conversation.attribution),
     })) : [],
     attributionTouches,
+    deliverabilityChecks: Array.isArray(legacy.deliverabilityChecks) ? legacy.deliverabilityChecks.filter((check) => check && typeof check.domain === "string").slice(0, 20) : [],
     runs: Array.isArray(state.runs) ? state.runs : [],
     missions,
     content,
@@ -904,6 +907,7 @@ function createEmptyState(companyId: string): WorkspaceState {
     widget: createWidgetSettings(),
     widgetConversations: [],
     attributionTouches: [],
+    deliverabilityChecks: [],
     runs: [],
     missions: [],
     content: [],
