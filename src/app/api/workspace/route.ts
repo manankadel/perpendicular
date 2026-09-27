@@ -47,7 +47,7 @@ import { executeWorkspaceApp } from "@/lib/app-runtime";
 import { executeWorkspacePlaybook } from "@/lib/playbook-runtime";
 import { executeTicketReplyDraft } from "@/lib/ticket-runtime";
 import { executeTicketReplySend } from "@/lib/ticket-send-runtime";
-import { createDealInState, updateDealInState } from "@/lib/deal-runtime";
+import { createDealInState, updateDealInState, type CreateDealInput } from "@/lib/deal-runtime";
 import { publishContentInState, scheduleContentInState } from "@/lib/content-runtime";
 import { scheduleCampaignInState } from "@/lib/campaign-runtime";
 import { executeCampaignBroadcast } from "@/lib/campaign-send-runtime";
@@ -830,7 +830,8 @@ async function postWorkspace(request: Request): Promise<Response> {
           return state;
         }
         case "create-deal": {
-          createDealInState(state, { name: String(body.name || ""), company: String(body.company || ""), amount: Number(body.amount || 0), currency: String(body.currency || "USD"), stage: body.stage as never, personId: String(body.personId || "").trim() || null, ownerEmployeeId: String(body.ownerEmployeeId || "").trim() || null, source: String(body.source || "manual"), nextAction: String(body.nextAction || ""), closeDate: body.closeDate ? String(body.closeDate) : null, notes: String(body.notes || "") });
+          const attribution = body.attribution && typeof body.attribution === "object" ? body.attribution as CreateDealInput["attribution"] : undefined;
+          createDealInState(state, { name: String(body.name || ""), company: String(body.company || ""), amount: Number(body.amount || 0), currency: String(body.currency || "USD"), stage: body.stage as never, personId: String(body.personId || "").trim() || null, ownerEmployeeId: String(body.ownerEmployeeId || "").trim() || null, source: String(body.source || "manual"), nextAction: String(body.nextAction || ""), closeDate: body.closeDate ? String(body.closeDate) : null, notes: String(body.notes || ""), sessionId: String(body.sessionId || "").trim() || null, attribution });
           return state;
         }
         case "update-deal": {

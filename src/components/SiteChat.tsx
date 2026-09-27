@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-export default function SiteChat({ slug, workspaceId, agentName, greeting }: { slug: string; workspaceId: string; agentName: string; greeting: string }) {
+export default function SiteChat({ slug, workspaceId, agentName, greeting, initialAttribution }: { slug: string; workspaceId: string; agentName: string; greeting: string; initialAttribution?: Record<string, string> }) {
   const [message, setMessage] = useState("");
   const [sessionId, setSessionId] = useState(() => typeof window === "undefined" ? "" : window.sessionStorage.getItem(`perpendicular-site-session:${slug}`) || "");
   const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([{ role: "assistant", content: greeting }]);
@@ -15,7 +15,7 @@ export default function SiteChat({ slug, workspaceId, agentName, greeting }: { s
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch(`/api/site/${encodeURIComponent(slug)}/chat`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ workspaceId, message: text, sessionId: sessionId || undefined }) });
+      const response = await fetch(`/api/site/${encodeURIComponent(slug)}/chat`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ workspaceId, message: text, sessionId: sessionId || undefined, attribution: initialAttribution }) });
       const body = await response.json().catch(() => ({})) as { message?: string; sessionId?: string; error?: string };
       if (!response.ok) throw new Error(body.error || "The inbound agent could not respond.");
       const nextSessionId = body.sessionId || sessionId;

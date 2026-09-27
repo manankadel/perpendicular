@@ -1,6 +1,7 @@
 import "server-only";
 
 import { addActivity, createId, dealProbability, timestamp, type DealRecord, type DealStage, type WorkspaceState } from "@/lib/domain";
+import { dealAttribution, recordDealAttribution, type AttributionInput } from "@/lib/attribution-runtime";
 import { getWorkspace, updateWorkspace } from "@/lib/server-store";
 
 export type CreateDealInput = {
@@ -15,6 +16,8 @@ export type CreateDealInput = {
   nextAction?: string;
   closeDate?: string | null;
   notes?: string;
+  sessionId?: string | null;
+  attribution?: AttributionInput | null;
 };
 
 export type UpdateDealInput = Partial<Pick<DealRecord, "amount" | "nextAction" | "closeDate" | "notes" | "ownerEmployeeId">> & {
@@ -44,8 +47,9 @@ export function createDealInState(state: WorkspaceState, input: CreateDealInput)
   if (personId && !state.people.some((person) => person.id === personId)) throw new Error("Person not found.");
   if (ownerEmployeeId && !state.employees.some((employee) => employee.id === ownerEmployeeId)) throw new Error("Owner employee not found.");
   const createdAt = timestamp();
+  const dealId = createId("deal");
   const deal: DealRecord = {
-    id: createId("deal"),
+    id: dealId,
     name,
     company,
     personId,
@@ -61,7 +65,9 @@ export function createDealInState(state: WorkspaceState, input: CreateDealInput)
     createdAt,
     updatedAt: createdAt,
     stageHistory: [{ stage, at: createdAt, note: "Deal created" }],
+    attribution: null,
   };
+  deal.attribution = input.sessionId || input.attribution ? recordDealAttribution(state, { dealId, sessionId: input.sessionId, attribution: input.attribution }) : dealAttribution(state, null);
   state.deals.unshift(deal);
   addActivity(state, { type: "lead", title: `${deal.name} entered the pipeline`, detail: `${deal.company} · ${deal.stage} · ${deal.amount.toLocaleString()} ${deal.currency}` });
   return deal;

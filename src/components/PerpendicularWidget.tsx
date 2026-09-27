@@ -7,7 +7,7 @@ type WidgetMessage = { role: "user" | "assistant"; content: string; citations?: 
 
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
 
-export default function PerpendicularWidget({ workspaceId, publicKey }: { workspaceId: string; publicKey: string }) {
+export default function PerpendicularWidget({ workspaceId, publicKey, initialAttribution }: { workspaceId: string; publicKey: string; initialAttribution?: Record<string, string> }) {
   const [config, setConfig] = useState<WidgetConfig | null>(null);
   const [messages, setMessages] = useState<WidgetMessage[]>([]);
   const [input, setInput] = useState("");
@@ -39,7 +39,7 @@ export default function PerpendicularWidget({ workspaceId, publicKey }: { worksp
     setError(null);
     setMessages((current) => [...current, { role: "user", content: message }]);
     try {
-      const response = await fetch(`${endpoint}/chat`, { method: "POST", headers: { "content-type": "application/json", "x-perpendicular-widget-key": publicKey }, body: JSON.stringify({ message, sessionId }) });
+      const response = await fetch(`${endpoint}/chat`, { method: "POST", headers: { "content-type": "application/json", "x-perpendicular-widget-key": publicKey }, body: JSON.stringify({ message, sessionId, attribution: initialAttribution }) });
       const payload = await response.json().catch(() => ({})) as { message?: string; citations?: string[]; sessionId?: string; error?: string };
       if (!response.ok || !payload.message) throw new Error(payload.error || "The assistant could not respond.");
       if (payload.sessionId) {

@@ -6,6 +6,7 @@ import { consumeApiKeyRateLimitPersistent } from "@/lib/rate-limit";
 import { widgetKeyHash, authenticateWidget, widgetCorsHeaders, widgetEmployee } from "@/lib/widget";
 import { recordAuditEvent } from "@/lib/integration-store";
 import { recordUsage } from "@/lib/usage";
+import { attributionForSession, recordAttributionTouchInState, touchFromInput, type AttributionInput } from "@/lib/attribution-runtime";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -31,9 +32,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ wor
   if (!connection) return NextResponse.json({ error: "Widget key is invalid or the widget is disabled." }, { status: 401, headers });
   const decision = await consumeApiKeyRateLimitPersistent(widgetKeyHash(key), workspaceId);
   if (!decision.allowed) return NextResponse.json({ error: "Widget request limit reached. Try again shortly." }, { status: 429, headers: { ...headers, "retry-after": String(decision.retryAfterSeconds) } });
-  let body: { message?: unknown; sessionId?: unknown };
+  let body: { message?: unknown; sessionId?: unknown; attribution?: unknown };
   try {
-    body = await request.json() as { message?: unknown; sessionId?: unknown };
+    body = await request.json() as { message?: unknown; sessionId?: unknown; attribution?: unknown };
   } catch {
     return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400, headers });
   }
@@ -45,13 +46,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ wor
   if (connection.state.workspace.aiCredits.remaining < 1) return NextResponse.json({ error: "This workspace has no AI Credits remaining." }, { status: 402, headers });
   const generated = await generateEmployeeReply(employee, message, connection.state.documents);
   const currentSessionId = sessionId(body.sessionId);
+  const attribution = body.attribution && typeof body.attribution === "object" ? body.attribution as AttributionInput : undefined;
+  const touch = touchFromInput({ sessionId: currentSessionId, channel: "widget", attribution });
   let charged = false;
   const next = await updateWorkspace(workspaceId, (state) => {
     if (state.workspace.aiCredits.remaining < 1) return state;
     charged = true;
+    if (touch) recordAttributionTouchInState(state, touch);
     let conversation = state.widgetConversations.find((candidate) => candidate.sessionId === currentSessionId);
     if (!conversation) {
-      conversation = { id: createId("widget-conversation"), sessionId: currentSessionId, employeeId: employee.id, messages: [], createdAt: timestamp(), updatedAt: timestamp() };
+      conversation = { id: createId("widget-conversation"), sessionId: currentSessionId, employeeId: employee.id, messages: [], createdAt: timestamp(), updatedAt: timestamp(), attribution: touch };
       state.widgetConversations.unshift(conversation);
     }
     conversation.messages.push(
@@ -60,6 +64,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ wor
     );
     conversation.messages = conversation.messages.slice(-30);
     conversation.updatedAt = timestamp();
+    conversation.attribution = conversation.attribution || touch;
     state.workspace.aiCredits.remaining = Math.max(0, state.workspace.aiCredits.remaining - 1);
     addActivity(state, { type: "system", title: `${employee.name} answered a website visitor`, detail: `${generated.provider} · ${generated.citations.length} scoped source${generated.citations.length === 1 ? "" : "s"}` });
     return state;
@@ -73,6 +78,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ wor
     sessionId: currentSessionId,
     message: generated.content,
     citations: generated.citations,
+    attribution: attributionForSession(next, currentSessionId),
     employee: { id: employee.id, name: employee.name, avatar: employee.avatar },
     provider: generated.provider,
     aiCreditsRemaining: next.workspace.aiCredits.remaining,

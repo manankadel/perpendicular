@@ -14,11 +14,14 @@ async function findPublishedSite(slug: string) {
   return null;
 }
 
-export default async function PublicSite({ params }: { params: Promise<{ slug: string }> }) {
+export default async function PublicSite({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { slug } = await params;
+  const query = await searchParams;
   const result = await findPublishedSite(slug);
   if (!result) notFound();
   const { state, site, workspaceId } = result;
   const agent = site.agentId ? state.inboundAgents.find((candidate) => candidate.id === site.agentId && candidate.status === "live") : null;
-  return <main className="public-site"><div className="public-site-inner"><div className="eyebrow">{state.workspace.name}</div><h1>{site.headline}</h1>{site.body ? <p className="public-site-body">{site.body}</p> : null}<div className="public-site-meta">{site.kind === "landing_page" ? "Landing page" : "Website"} · open source runtime</div>{agent ? <SiteChat slug={site.slug} workspaceId={workspaceId} agentName={state.employees.find((employee) => employee.id === agent.employeeId)?.name || agent.name} greeting={agent.greeting} /> : <div className="public-site-note">This page is published. Attach a live inbound agent to open conversations.</div>}</div></main>;
+  const first = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] || "" : value || "";
+  const initialAttribution = { source: first(query.utm_source), medium: first(query.utm_medium), campaign: first(query.utm_campaign), content: first(query.utm_content), term: first(query.utm_term) };
+  return <main className="public-site"><div className="public-site-inner"><div className="eyebrow">{state.workspace.name}</div><h1>{site.headline}</h1>{site.body ? <p className="public-site-body">{site.body}</p> : null}<div className="public-site-meta">{site.kind === "landing_page" ? "Landing page" : "Website"} · open source runtime</div>{agent ? <SiteChat slug={site.slug} workspaceId={workspaceId} agentName={state.employees.find((employee) => employee.id === agent.employeeId)?.name || agent.name} greeting={agent.greeting} initialAttribution={initialAttribution} /> : <div className="public-site-note">This page is published. Attach a live inbound agent to open conversations.</div>}</div></main>;
 }

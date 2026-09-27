@@ -12,6 +12,7 @@ import { executeTicketReplyDraft } from "@/lib/ticket-runtime";
 import { executeTicketReplySend } from "@/lib/ticket-send-runtime";
 import { createWorkspaceDeal, updateWorkspaceDeal } from "@/lib/deal-runtime";
 import { executeCampaignBroadcast } from "@/lib/campaign-send-runtime";
+import type { AttributionInput } from "@/lib/attribution-runtime";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -29,7 +30,7 @@ const tools = [
   { name: "ticket_reply_draft", description: "Draft a grounded support reply, persist it on the ticket, and leave external sending to a human/provider action.", inputSchema: { type: "object", required: ["ticketId"], properties: { ticketId: { type: "string" }, employeeId: { type: "string" } } } },
   { name: "ticket_reply_send", description: "Send a previously drafted ticket reply through the connected Gmail mailbox with suppression, daily-limit, and durable idempotency checks.", inputSchema: { type: "object", required: ["ticketId"], properties: { ticketId: { type: "string" }, body: { type: "string" } } } },
   { name: "campaign_broadcast_send", description: "Send a human-triggered Gmail broadcast campaign to its enriched Smart List with suppression, daily-limit, and per-recipient idempotency checks.", inputSchema: { type: "object", required: ["campaignId"], properties: { campaignId: { type: "string" } } } },
-  { name: "deal_create", description: "Create a workspace-scoped pipeline opportunity with value, stage, owner, source, and next action.", inputSchema: { type: "object", required: ["name", "company"], properties: { name: { type: "string" }, company: { type: "string" }, amount: { type: "number" }, stage: { type: "string" }, ownerEmployeeId: { type: "string" }, personId: { type: "string" }, source: { type: "string" }, nextAction: { type: "string" }, closeDate: { type: "string" }, notes: { type: "string" } } } },
+  { name: "deal_create", description: "Create a workspace-scoped pipeline opportunity with value, stage, owner, source, next action, and optional UTM/session attribution.", inputSchema: { type: "object", required: ["name", "company"], properties: { name: { type: "string" }, company: { type: "string" }, amount: { type: "number" }, stage: { type: "string" }, ownerEmployeeId: { type: "string" }, personId: { type: "string" }, source: { type: "string" }, nextAction: { type: "string" }, closeDate: { type: "string" }, notes: { type: "string" }, sessionId: { type: "string" }, attribution: { type: "object", properties: { source: { type: "string" }, medium: { type: "string" }, campaign: { type: "string" }, content: { type: "string" }, term: { type: "string" } } } } } },
   { name: "deal_update", description: "Update a pipeline opportunity and append stage history when its stage changes.", inputSchema: { type: "object", required: ["dealId"], properties: { dealId: { type: "string" }, stage: { type: "string" }, stageNote: { type: "string" }, amount: { type: "number" }, ownerEmployeeId: { type: "string" }, nextAction: { type: "string" }, closeDate: { type: "string" }, notes: { type: "string" } } } },
   { name: "integrations_list", description: "List connected integration metadata without secrets.", inputSchema: { type: "object", properties: {} } },
 ];
@@ -121,7 +122,8 @@ export async function POST(request: Request) {
     }
     if (name === "deal_create") {
       if (!hasPermission(identity.context, "workspace:write")) throw new Error("Permission denied.");
-      const execution = await createWorkspaceDeal({ workspaceId: identity.context.workspaceId, input: { name: String(args.name || ""), company: String(args.company || ""), amount: Number(args.amount || 0), currency: String(args.currency || "USD"), stage: args.stage as never, personId: String(args.personId || "").trim() || null, ownerEmployeeId: String(args.ownerEmployeeId || "").trim() || null, source: String(args.source || "mcp"), nextAction: String(args.nextAction || ""), closeDate: args.closeDate ? String(args.closeDate) : null, notes: String(args.notes || "") } });
+      const attribution = args.attribution && typeof args.attribution === "object" ? args.attribution as AttributionInput : undefined;
+      const execution = await createWorkspaceDeal({ workspaceId: identity.context.workspaceId, input: { name: String(args.name || ""), company: String(args.company || ""), amount: Number(args.amount || 0), currency: String(args.currency || "USD"), stage: args.stage as never, personId: String(args.personId || "").trim() || null, ownerEmployeeId: String(args.ownerEmployeeId || "").trim() || null, source: String(args.source || "mcp"), nextAction: String(args.nextAction || ""), closeDate: args.closeDate ? String(args.closeDate) : null, notes: String(args.notes || ""), sessionId: String(args.sessionId || "").trim() || null, attribution } });
       try { await recordAuditEvent({ workspaceId: identity.context.workspaceId, actorId: identity.context.userId, action: "mcp.deal_create", resourceType: "deal", resourceId: execution.deal.id }); } catch { if (process.env.NODE_ENV === "production") return persistedFailure(id, execution.state, "The deal was saved, but its audit record could not be stored."); }
       return respond({ jsonrpc: "2.0", id, result: result({ deal: execution.deal, state: workspaceStateForClient(execution.state) }) });
     }

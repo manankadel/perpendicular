@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { defaultOutboundSafetySettings, normalizeOutboundSafetySettings, type OutboundSafetySettings } from "@/lib/outbound-safety";
+import { createAttributionTouch, type AttributionSummary, type AttributionTouch } from "@/lib/attribution";
 
 export type { OutboundSafetySettings } from "@/lib/outbound-safety";
 
@@ -84,6 +85,7 @@ export type WidgetConversation = {
   messages: ConversationMessage[];
   createdAt: string;
   updatedAt: string;
+  attribution?: AttributionTouch | null;
 };
 
 export type WidgetSettings = {
@@ -293,6 +295,7 @@ export type DealRecord = {
   createdAt: string;
   updatedAt: string;
   stageHistory: Array<{ stage: DealStage; at: string; note: string }>;
+  attribution?: (AttributionSummary & { sessionId: string | null }) | null;
 };
 
 export type LeadSource = {
@@ -453,6 +456,7 @@ export type WorkspaceState = {
   conversations: Conversation[];
   widget: WidgetSettings;
   widgetConversations: WidgetConversation[];
+  attributionTouches: AttributionTouch[];
   runs: Run[];
   missions: Mission[];
   content: ContentItem[];
@@ -542,6 +546,41 @@ function defaultPlaybooks(): Playbook[] {
       lastRunAt: null,
     },
   ];
+}
+
+function normalizeAttributionTouch(input: unknown): AttributionTouch | null {
+  if (!input || typeof input !== "object") return null;
+  const value = input as Record<string, unknown>;
+  const channel = value.channel === "widget" || value.channel === "manual" ? value.channel : "site";
+  return createAttributionTouch({
+    sessionId: value.sessionId,
+    channel,
+    source: value.source,
+    medium: value.medium,
+    campaign: value.campaign,
+    content: value.content,
+    term: value.term,
+    capturedAt: typeof value.capturedAt === "string" ? value.capturedAt : undefined,
+  });
+}
+
+function normalizeDealAttribution(input: unknown) {
+  if (!input || typeof input !== "object") return null;
+  const value = input as Record<string, unknown>;
+  const firstTouch = normalizeAttributionTouch(value.firstTouch);
+  const lastTouch = normalizeAttributionTouch(value.lastTouch);
+  const linear = Array.isArray(value.linear)
+    ? value.linear.map((entry) => {
+        if (!entry || typeof entry !== "object") return null;
+        const item = entry as Record<string, unknown>;
+        const touch = normalizeAttributionTouch(item.touch);
+        const weight = typeof item.weight === "number" && Number.isFinite(item.weight) ? Math.max(0, Math.min(1, item.weight)) : 0;
+        return touch ? { touch, weight } : null;
+      }).filter((entry): entry is { touch: AttributionTouch; weight: number } => Boolean(entry))
+    : [];
+  const touchCount = typeof value.touchCount === "number" && Number.isFinite(value.touchCount) ? Math.max(0, Math.floor(value.touchCount)) : linear.length;
+  const sessionId = typeof value.sessionId === "string" && value.sessionId.trim() ? value.sessionId.trim().slice(0, 120) : firstTouch?.sessionId || lastTouch?.sessionId || null;
+  return { firstTouch, lastTouch, touchCount, linear, sessionId };
 }
 
 export function ticketSlaMinutes(priority: Ticket["priority"]) {
@@ -680,8 +719,13 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
       closeDate: typeof deal.closeDate === "string" ? deal.closeDate : null,
       notes: typeof deal.notes === "string" ? deal.notes : "",
       stageHistory: history,
+      attribution: normalizeDealAttribution(deal.attribution),
     };
   });
+  const attributionTouches = (Array.isArray(legacy.attributionTouches) ? legacy.attributionTouches : [])
+    .map(normalizeAttributionTouch)
+    .filter((touch): touch is AttributionTouch => Boolean(touch))
+    .slice(0, 5000);
   let sequences: Sequence[] = (Array.isArray(state.sequences) ? state.sequences : []).map((sequence) => ({
     ...sequence,
     sent: typeof sequence.sent === "number" && Number.isFinite(sequence.sent) ? sequence.sent : 0,
@@ -761,7 +805,11 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
       employeeId: typeof state.widget?.employeeId === "string" ? state.widget.employeeId : null,
       greeting: typeof state.widget?.greeting === "string" && state.widget.greeting.trim() ? state.widget.greeting : createWidgetSettings().greeting,
     },
-    widgetConversations: Array.isArray(state.widgetConversations) ? state.widgetConversations : [],
+    widgetConversations: Array.isArray(state.widgetConversations) ? state.widgetConversations.map((conversation) => ({
+      ...conversation,
+      attribution: normalizeAttributionTouch(conversation.attribution),
+    })) : [],
+    attributionTouches,
     runs: Array.isArray(state.runs) ? state.runs : [],
     missions,
     content,
@@ -855,6 +903,7 @@ function createEmptyState(companyId: string): WorkspaceState {
     conversations: [],
     widget: createWidgetSettings(),
     widgetConversations: [],
+    attributionTouches: [],
     runs: [],
     missions: [],
     content: [],
