@@ -502,6 +502,8 @@ button:disabled { cursor: wait; opacity: .52; }
 .discovery-facts span { color: var(--text-dim); font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 .discovery-facts strong { margin-top: 10px; color: var(--text); font-size: 11px; line-height: 1.35; }
 .discovery-facts small { margin-top: 5px; color: var(--text-dim); font-size: 9px; line-height: 1.35; }
+.discovery-facts .onboarding-link { display: block; margin-top: 5px; color: var(--mint); font-size: 9px; line-height: 1.35; text-decoration: none; }
+.discovery-facts .onboarding-link:hover { text-decoration: underline; }
 .onboarding-action-row { display: flex; gap: 9px; flex-wrap: wrap; }
 .run-proof-head { display: flex; align-items: start; justify-content: space-between; gap: 18px; }
 .run-proof-head h2 { max-width: 480px; font-size: 20px; line-height: 1.2; }

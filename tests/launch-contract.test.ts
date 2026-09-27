@@ -311,6 +311,7 @@ test("email sequence enrollment is blocked until Gmail is connected", () => {
   assert.match(route, /Connect Gmail before running this enrollment action/);
   assert.match(route, /Activate the sequence after reviewing its steps before running this action/);
   assert.match(console, /Connect Gmail to enroll/);
+  assert.match(console, /api\/integrations\/google\/start/);
   assert.match(console, /create-sequence-task/);
 });
 
