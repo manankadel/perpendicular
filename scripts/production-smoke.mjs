@@ -1,6 +1,8 @@
 const apiOrigin = (process.env.PERPENDICULAR_SMOKE_API_ORIGIN || "https://perpendicular-api.bluebloodstudio.com").replace(/\/$/, "");
 const canonicalOrigin = (process.env.PERPENDICULAR_SMOKE_WEB_ORIGIN || "https://perpendicular.bluebloodstudio.com").replace(/\/$/, "");
 const vercelOrigin = (process.env.PERPENDICULAR_SMOKE_VERCEL_ORIGIN || "https://perpendicular-nine.vercel.app").replace(/\/$/, "");
+const publicSiteSlug = process.env.PERPENDICULAR_SMOKE_SITE_SLUG || "blueblood-studio-blueblood-studio";
+const bookingSlug = process.env.PERPENDICULAR_SMOKE_BOOKING_SLUG || "blueblood-studio-meet-blueblood-studio";
 const timeoutMs = 10_000;
 const failures = [];
 
@@ -79,6 +81,18 @@ for (const [name, origin] of [["canonical UI", canonicalOrigin], ["Vercel UI", v
 await check("public widget entry route", async () => {
   const response = await request(`${canonicalOrigin}/widget/smoke-test?key=invalid`);
   if (response.status !== 200) throw new Error(`status=${response.status}`);
+});
+
+await check("public site delivery route", async () => {
+  const response = await request(`${canonicalOrigin}/site/${encodeURIComponent(publicSiteSlug)}`);
+  const body = await response.text();
+  if (response.status !== 200 || !body.includes("Perpendicular")) throw new Error(`status=${response.status}`);
+});
+
+await check("public booking availability", async () => {
+  const response = await request(`${apiOrigin}/api/book/${encodeURIComponent(bookingSlug)}`);
+  const body = await json(response);
+  if (response.status !== 200 || !Array.isArray(body.slots) || body.slots.length < 1) throw new Error(`status=${response.status}`);
 });
 
 if (failures.length) {

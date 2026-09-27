@@ -49,7 +49,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Webhook catalog and dead-letter replay controls | Implemented; provider E2E pending | `/api/ops`, Settings → Operations |
 | Operational health counts for dead letters, failed webhooks, and degraded integrations | Live and deployed | `/api/health`, required schema includes outbound send records |
 | Dell local backup schedule, clean-database restore rehearsal, and off-machine copy | Live | Root cron at 02:15, verified custom-format dump, restore into `perpendicular_restore_check` with 13 platform tables, and Mac launchd pull of `/opt/blueblood/backups/perpendicular` via the existing least-privilege sudo rule |
-| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:a6d365cf5b4135d24dc6f32f225d1e59f40be4ac8177cac8ccfeb7f4a33ba217`, commit `7d4edb0`, eight checks, 2026-09-27 |
+| Read-only production smoke gate | Live and verified on the promoted Dell release | `npm run smoke:production`, image `sha256:a6d365cf5b4135d24dc6f32f225d1e59f40be4ac8177cac8ccfeb7f4a33ba217`, commit `7d4edb0`, ten checks including public site delivery and booking availability, 2026-09-27 |
 | Dell heartbeat trigger | Live and verified on the host | Root-owned `/usr/local/sbin/perpendicular-heartbeat`, `flock` lock, API-origin request, and successful authenticated tick on 2026-09-26 |
 | CI verification before image publication | Live | `.github/workflows/perpendicular-image.yml` runs check and production audit before publish |
 
