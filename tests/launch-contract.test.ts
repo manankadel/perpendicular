@@ -149,6 +149,8 @@ test("Google sign-in stays product-owned and uses a safe return path", () => {
   assert.match(route, /safeReturnPath/);
   assert.match(route, /api\/oauth\/google\/start/);
   assert.match(route, /PERPENDICULAR_WEB_ORIGIN/);
+  assert.match(route, /redirect: "manual"/);
+  assert.match(route, /Domain=\.bluebloodstudio\.com/);
   assert.match(login, /api\/auth\/google\/start/);
 });
 
