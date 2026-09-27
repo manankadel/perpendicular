@@ -264,6 +264,7 @@ async function postWorkspace(request: Request): Promise<Response> {
         state.content.unshift(...artifacts.content);
         state.sequences.unshift(artifacts.sequence);
         state.lists.unshift(artifacts.list);
+        state.leadSources.unshift(artifacts.leadSource);
         state.inboundAgents.unshift(artifacts.inboundAgent);
         state.sites.unshift(artifacts.site);
         state.playbooks = state.playbooks.length ? state.playbooks : artifacts.playbooks;
@@ -280,7 +281,7 @@ async function postWorkspace(request: Request): Promise<Response> {
           missionIds: artifacts.missions.map((mission) => mission.id),
           contentIds: artifacts.content.map((item) => item.id),
         };
-        addActivity(state, { type: "system", title: `${companyName} was discovered`, detail: `${artifacts.document.name} indexed · ${artifacts.employees.length} operators, ${artifacts.missions.length} missions, a lead workspace, and a live public operator are ready`, });
+        addActivity(state, { type: "system", title: `${companyName} was discovered`, detail: `${artifacts.document.name} indexed · ${artifacts.employees.length} operators, ${artifacts.missions.length} missions, ${artifacts.content.length} content briefs, public research, a lead workspace, and a live public operator are ready`, });
         return state;
       });
       try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.bootstrap", metadata: { goal, source: discovery.url ? "public_url" : "operator_brief" } }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The workspace was created, but its audit record could not be stored." }, { status: 503 }); }
@@ -1330,7 +1331,7 @@ async function postWorkspace(request: Request): Promise<Response> {
           const listId = String(body.listId || "").trim() || null;
           if (type === "csv" && (!listId || !state.lists.some((list) => list.id === listId))) throw new Error("Choose a Smart List for the CSV source.");
           const query = String(body.query || "").trim() || (type === "public" ? name : null);
-          const source: LeadSource = { id: createId("source"), name, type, listId, query, status: "ready", recordCount: 0, lastRunAt: null, lastSummary: null, createdAt: timestamp() };
+          const source: LeadSource = { id: createId("source"), name, type, listId, query, results: [], status: "ready", recordCount: 0, lastRunAt: null, lastSummary: null, createdAt: timestamp() };
           state.leadSources.unshift(source);
           addActivity(state, { type: "lead", title: `${name} was added as a lead source`, detail: `${type} source · ready to run${listId ? ` · ${state.lists.find((list) => list.id === listId)?.name}` : ""}` });
           return state;
@@ -1343,13 +1344,18 @@ async function postWorkspace(request: Request): Promise<Response> {
             const list = source.listId ? state.lists.find((candidate) => candidate.id === source.listId) : undefined;
             if (!list) throw new Error("The source Smart List no longer exists.");
             source.recordCount = list.rows.length;
+            source.results = [];
             source.lastSummary = `${list.rows.length} Smart List row${list.rows.length === 1 ? "" : "s"} available for research and workflow actions.`;
           } else if (source.type === "public") {
+            if (state.workspace.dataCredits.remaining < 2) throw new Error("Not enough Data Credits for public research.");
             const result = await researchPublicKeyword(source.query || source.name);
+            state.workspace.dataCredits.remaining -= 2;
             source.recordCount = result.matches.length;
+            source.results = result.matches;
             source.lastSummary = result.matches.slice(0, 3).map((match) => match.title).join(" · ") || "No public matches found.";
           } else {
             source.recordCount = state.people.length;
+            source.results = [];
             source.lastSummary = `${state.people.length} manually owned People record${state.people.length === 1 ? "" : "s"} available for qualification.`;
           }
           source.status = "completed";
@@ -1530,6 +1536,14 @@ async function postWorkspace(request: Request): Promise<Response> {
     if (action === "qualify-person") {
       try {
         await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "person_qualification", unit: "data", units: 2 });
+      } catch {
+        if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(updated), persisted: true, error: "The research was saved, but its usage record could not be stored." }, { status: 503 });
+      }
+    }
+    const ranPublicLeadSource = action === "run-lead-source" && updated.leadSources.find((source) => source.id === String(body.sourceId || ""))?.type === "public";
+    if (ranPublicLeadSource) {
+      try {
+        await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "lead_source_public_research", unit: "data", units: 2 });
       } catch {
         if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(updated), persisted: true, error: "The research was saved, but its usage record could not be stored." }, { status: 503 });
       }

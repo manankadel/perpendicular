@@ -111,10 +111,12 @@ test("onboarding builds a source, an operator pod, and executable work", () => {
   assert.equal(result.employee.department, "Content");
   assert.equal(result.employees.length, 4);
   assert.equal(result.missions.length, 4);
-  assert.equal(result.content.length, 1);
+  assert.equal(result.content.length, 3);
   assert.equal(result.sequence.status, "draft");
   assert.equal(result.sequence.steps.length, 5);
   assert.equal(result.list.rows.length, 0);
+  assert.equal(result.leadSource.type, "public");
+  assert.equal(result.leadSource.listId, result.list.id);
   assert.equal(result.inboundAgent.status, "live");
   assert.equal(result.site.status, "published");
   assert.equal(result.site.agentId, result.inboundAgent.id);

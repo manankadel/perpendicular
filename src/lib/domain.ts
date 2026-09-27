@@ -301,6 +301,7 @@ export type LeadSource = {
   type: "manual" | "csv" | "public";
   listId?: string | null;
   query?: string | null;
+  results?: Array<{ title: string; url: string; snippet: string }>;
   status: "ready" | "running" | "completed" | "failed";
   recordCount: number;
   lastRunAt: string | null;
@@ -762,7 +763,15 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
     })) : [],
     people: Array.isArray(state.people) ? state.people : [],
     deals,
-    leadSources: Array.isArray(state.leadSources) ? state.leadSources : [],
+    leadSources: Array.isArray(state.leadSources) ? state.leadSources.map((source) => ({
+      ...source,
+      listId: typeof source.listId === "string" ? source.listId : null,
+      query: typeof source.query === "string" ? source.query : null,
+      results: Array.isArray(source.results)
+        ? source.results.filter((result) => result && typeof result.title === "string" && typeof result.url === "string" && typeof result.snippet === "string").slice(0, 10)
+        : [],
+      lastSummary: typeof source.lastSummary === "string" ? source.lastSummary : null,
+    })) : [],
     campaigns: Array.isArray(state.campaigns) ? state.campaigns.map((campaign) => ({
       ...campaign,
       subject: typeof campaign.subject === "string" ? campaign.subject : null,
@@ -1593,11 +1602,14 @@ export function buildOnboardingArtifacts(args: {
     };
   });
   const contentEmployee = employees.find((employee) => employee.department === "Content") || primary;
-  const content: ContentItem[] = [{
+  const contentBriefs: Array<Pick<ContentItem, "title" | "channel" | "objective">> = [
+    { title: `First ${args.companyName} point of view`, channel: "linkedin", objective: "Turn the real company context into one useful, specific point of view for the ideal customer." },
+    { title: `${args.companyName} customer problem brief`, channel: "blog", objective: "Explain one concrete customer problem from the discovered context, the cost of leaving it unresolved, and a grounded way to think about it." },
+    { title: `${args.companyName} welcome page`, channel: "website", objective: "Create a clear website page that explains what the company does, who it helps, and the next useful step without inventing proof." },
+  ];
+  const content: ContentItem[] = contentBriefs.map((brief) => ({
     id: createId("content"),
-    title: `First ${args.companyName} point of view`,
-    channel: "linkedin",
-    objective: "Turn the real company context into one useful, specific point of view for the ideal customer.",
+    ...brief,
     status: "idea",
     body: "",
     employeeId: contentEmployee.id,
@@ -1605,7 +1617,7 @@ export function buildOnboardingArtifacts(args: {
     scheduledAt: null,
     createdAt,
     updatedAt: createdAt,
-  }];
+  }));
   const sequence: Sequence = {
     id: createId("seq"),
     name: `${args.companyName} first conversation`,
@@ -1630,6 +1642,19 @@ export function buildOnboardingArtifacts(args: {
     updatedAt: createdAt,
     rows: [],
     actions: [],
+  };
+  const leadSource: LeadSource = {
+    id: createId("source"),
+    name: `${args.companyName} public research`,
+    type: "public",
+    listId: list.id,
+    query: `${args.companyName} ${args.goal}`,
+    results: [],
+    status: "ready",
+    recordCount: 0,
+    lastRunAt: null,
+    lastSummary: "Ready to run a public search. Results are saved here for review; no contact or email is invented.",
+    createdAt,
   };
   const inboundAgent: InboundAgent = {
     id: createId("agent"),
@@ -1673,6 +1698,7 @@ export function buildOnboardingArtifacts(args: {
     content,
     sequence,
     list,
+    leadSource,
     inboundAgent,
     site,
     profile,

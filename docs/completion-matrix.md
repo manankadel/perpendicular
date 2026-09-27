@@ -8,7 +8,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | --- | --- | --- |
 | Product-owned sign-in with Blueblood ID session authority | Live | `src/app/api/auth/*`, `src/lib/identity.ts`, auth tests |
 | Workspace discovery from a real public URL or operator brief | Live | `bootstrap-workspace`, `src/lib/public-research.ts` |
-| Discovery creates a usable operator pod, company profile, missions, first content brief, and a five-step draft sequence | Live | `buildOnboardingArtifacts`, `bootstrap-workspace`, onboarding UI, domain migration tests |
+| Discovery creates a usable operator pod, company profile, missions, three content briefs, a persisted public research source, and a five-step draft sequence | Live | `buildOnboardingArtifacts`, `bootstrap-workspace`, onboarding UI, domain migration tests |
 | Onboarding proof gate and explicit manual-vs-heartbeat handoff | Live | `proved` onboarding state, first mission linkage, `finish-onboarding`, `enable-onboarding-schedule`, onboarding UI |
 | Employee → scoped knowledge → local Ollama run → score → trace | Live | `run-employee`, `llm.ts`, `Run.trace`, domain tests |
 | Company context, persisted Chat, Scheduled work, and workspace Dashboard | Live at launch scope | `PlatformViews.tsx`, `update-profile`, `create-schedule`, `run-scheduled`, workspace state |
@@ -22,7 +22,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Smart List batch actions with conditions, bounded execution, and credit accounting | Live at launch scope | `create-list-action`, `run-list-action`, `toggle-list-action` |
 | Heartbeat scheduling with Postgres-leased idempotency | Live | `src/lib/job-store.ts`, heartbeat route, job tests |
 | Smart Lists, public research, dedupe, credit decrement, sequence enrollment | Live at launch scope | Workspace actions and UI |
-| People and Lead Data records with explicit public qualification and source runs | Live at launch scope | `create-person`, `qualify-person`, `create-lead-source`, `run-lead-source`, People and Lead Data views |
+| People and Lead Data records with explicit public qualification and source runs | Live at launch scope | `create-person`, `qualify-person`, `create-lead-source`, `run-lead-source`, persisted public result links, People and Lead Data views |
 | Lite CRM pipeline with value, stages, owners, next actions, close dates, sources, and stage history | Live at launch scope | `create-deal`, `update-deal`, Pipeline view, dashboard pipeline metrics, additive workspace migration |
 | Pipeline REST and MCP resources with shared persistence | Live at launch scope | `/api/deals`, `/api/deals/{dealId}`, MCP `deal_create`/`deal_update`, shared `deal-runtime` used by UI, REST, and MCP |
 | Draft sequences with a bounded five-step builder, activation, explicit Gmail step send, manual LinkedIn/Task handoffs, reply-pause/suppression guardrails, outbound daily limits/time windows/weekend rules/domain suppression, and durable send idempotency | Live at launch scope | `buildSequenceSteps`, sequence builder in `src/components/PerpendicularConsole.tsx`, `activate-sequence`, `send-sequence-step`, `Outbound safety` in Settings, `db/005_outbound_messages.sql`, Gmail reply handling |
@@ -34,7 +34,7 @@ This is the implementation truth for the supplied product and audit documents. A
 | Inbound agent records, published site/landing-page routes, and session-aware public site chat | Live at launch scope | `create-inbound-agent`, `create-site`, `/site/[slug]`, `/api/site/[slug]/chat`, persisted visitor session messages |
 | Workspace Apps definitions with explicit activation state | Live at launch scope | `create-app`, `toggle-app`, Apps view |
 | Workspace Apps execute a saved task through a local employee | Live at launch scope | `run-app`, `/api/apps/{appId}/run`, MCP `app_run`, persisted output/score/trace, Apps view |
-| Onboarding creates a ready lead workspace and grounded public operator page | Live at launch scope | `buildOnboardingArtifacts`, additive legacy migration, `/site/{slug}` and `/api/site/{slug}/chat` |
+| Onboarding creates a ready lead workspace, runnable public research source, content briefs, and grounded public operator page | Live at launch scope | `buildOnboardingArtifacts`, additive legacy migration, `/site/{slug}` and `/api/site/{slug}/chat` |
 | Gmail OAuth, encrypted refresh tokens, sync, watch renewal, webhook dedupe | Implemented; provider E2E pending | Gmail routes and integration health tables |
 | Persisted Gmail inbox plus inbound ticket creation | Live in code; provider E2E pending | `/api/inbox`, Gmail sync, Inbox view, `inbox-store.ts`; new inbound messages create deduplicated SLA tickets |
 | Capability-keyed inbound website widget with persisted visitor conversations | Live in code; deployed provider/model evidence pending | `/widget/{workspaceId}`, `/api/widget/{workspaceId}/chat`, Inbox → Website conversations |

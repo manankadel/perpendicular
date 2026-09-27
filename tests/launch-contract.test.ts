@@ -281,9 +281,12 @@ test("lead source runs capture real source-specific results", () => {
   const console = readFileSync(join(root, "src/components/PlatformViews.tsx"), "utf8");
   assert.match(route, /source\.type === "public"/);
   assert.match(route, /researchPublicKeyword\(source\.query \|\| source\.name\)/);
+  assert.match(route, /source\.results = result\.matches/);
   assert.match(route, /source\.type === "csv"/);
   assert.match(console, /Choose a Smart List/);
   assert.match(console, /source\.lastSummary/);
+  assert.match(console, /source\.results\?\.length/);
+  assert.match(console, /target="_blank"/);
 });
 
 test("email sequence enrollment is blocked until Gmail is connected", () => {
