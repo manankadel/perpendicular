@@ -52,9 +52,9 @@ test("retrieval returns scoped documents that share query terms", () => {
   assert.deepEqual(matches.map((document) => document.id), ["doc-gtm"]);
 });
 
-test("retrieval ignores generic question words", () => {
+test("retrieval ignores generic question words but keeps a usable source", () => {
   const state = createInitialState();
-  assert.deepEqual(findRelevantDocuments(state.documents, "what is this platform"), []);
+  assert.deepEqual(findRelevantDocuments(state.documents, "what is this platform"), state.documents.slice(0, 1));
 });
 
 test("fallback replies disclose source context and next action", () => {
@@ -122,11 +122,26 @@ test("onboarding builds a source, an operator pod, and executable work", () => {
   assert.equal(result.site.agentId, result.inboundAgent.id);
   assert.ok(result.sequence.steps.every((step) => step.channel === "Email" || step.channel === "Task"));
   assert.ok(result.employees.every((employee) => employee.tools && employee.tools.length > 0));
+  assert.ok(result.employees.every((employee) => employee.knowledgeDocumentIds?.includes(result.document.id)));
   assert.ok(result.missions.every((mission) => mission.sourceDocumentIds.includes(result.document.id)));
   assert.equal(result.document.source, "url");
-  assert.deepEqual(result.document.employeeIds, [result.employee.id]);
+  assert.deepEqual(result.document.employeeIds, result.employees.map((employee) => employee.id));
   assert.match(result.employee.systemPrompt, /Blueblood Studio/);
   assert.match(result.task, /content/i);
+});
+
+test("retrieval keeps the best workspace source when task wording has no exact overlap", () => {
+  const documents = [{
+    id: "doc-company",
+    name: "Company context",
+    source: "url" as const,
+    content: "Blueblood Studio builds digital products for ambitious teams.",
+    status: "ready" as const,
+    chunks: 1,
+    updatedAt: new Date().toISOString(),
+    employeeIds: ["emp-a"],
+  }];
+  assert.deepEqual(findRelevantDocuments(documents, "What should we do next?"), documents);
 });
 
 test("seed workspace exposes the durable operating surfaces", () => {
@@ -176,6 +191,24 @@ test("legacy one-operator workspaces receive a deterministic work queue", () => 
   assert.equal(migrated.content.length, 1);
   assert.equal(migrated.missions[0].id, `mission-legacy-${legacy.employees[0].id}`);
   assert.deepEqual(migrated.workspace.onboarding.employeeIds, [legacy.workspace.onboarding.employeeId]);
+});
+
+test("existing onboarding workspaces share their discovered source with every onboarding operator", () => {
+  const state = createInitialState("legacy-onboarding-scope");
+  const source = state.documents[0];
+  state.workspace.onboarding = {
+    ...state.workspace.onboarding,
+    status: "completed",
+    discoveredAt: new Date().toISOString(),
+    documentId: source.id,
+    employeeId: state.employees[0].id,
+    employeeIds: state.employees.map((employee) => employee.id),
+  };
+  source.employeeIds = [state.employees[0].id];
+  for (const employee of state.employees) employee.knowledgeDocumentIds = [];
+  const normalized = normalizeWorkspaceState(state, state.workspace.id);
+  assert.deepEqual(normalized.documents[0].employeeIds, state.employees.map((employee) => employee.id));
+  assert.ok(normalized.employees.every((employee) => employee.knowledgeDocumentIds?.includes(source.id)));
 });
 
 test("discovered workspaces receive a deterministic starter sequence during migration", () => {

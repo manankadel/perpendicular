@@ -35,6 +35,21 @@ function needsWorkspaceMigration(state: WorkspaceState) {
     && ((!Array.isArray(candidate.lists) || candidate.lists.length === 0)
       || (!Array.isArray(candidate.inboundAgents) || candidate.inboundAgents.length === 0)
       || (!Array.isArray(candidate.sites) || candidate.sites.length === 0));
+  const onboardingDocument = onboarding?.documentId && Array.isArray(candidate.documents)
+    ? candidate.documents.find((document) => document.id === onboarding.documentId)
+    : undefined;
+  const onboardingEmployeeIds = Array.isArray(onboarding?.employeeIds) && onboarding.employeeIds.length
+    ? onboarding.employeeIds
+    : onboarding?.employeeId
+      ? [onboarding.employeeId]
+      : [];
+  const needsOnboardingKnowledgeScope = Boolean(onboardingDocument && onboardingEmployeeIds.length > 0 && (
+    onboardingEmployeeIds.some((employeeId) => !onboardingDocument.employeeIds?.includes(employeeId))
+    || onboardingEmployeeIds.some((employeeId) => {
+      const employee = candidate.employees?.find((item) => item.id === employeeId);
+      return !employee?.knowledgeDocumentIds?.includes(onboardingDocument.id);
+    })
+  ));
   return needsEmployeeScoreMigration
     || !candidate.profile
     || !Array.isArray(candidate.missions)
@@ -54,7 +69,8 @@ function needsWorkspaceMigration(state: WorkspaceState) {
     || !Array.isArray(state.workspace.onboarding?.missionIds)
     || !Array.isArray(state.workspace.onboarding?.contentIds)
     || needsStarterSequence
-    || needsLaunchSurfaces;
+    || needsLaunchSurfaces
+    || needsOnboardingKnowledgeScope;
 }
 
 async function getPool() {

@@ -602,6 +602,15 @@ export function normalizeWorkspaceState(state: WorkspaceState, companyId: string
     missionIds: Array.isArray(state.workspace.onboarding?.missionIds) ? state.workspace.onboarding.missionIds : [],
     contentIds: Array.isArray(state.workspace.onboarding?.contentIds) ? state.workspace.onboarding.contentIds : [],
   };
+  const onboardingDocument = onboarding.documentId ? documents.find((document) => document.id === onboarding.documentId) : undefined;
+  if (onboardingDocument) {
+    const onboardingEmployeeIds = onboarding.employeeIds.length ? onboarding.employeeIds : onboarding.employeeId ? [onboarding.employeeId] : [];
+    const sharedEmployeeIds = onboardingEmployeeIds.length ? onboardingEmployeeIds : employees.map((employee) => employee.id);
+    onboardingDocument.employeeIds = [...new Set([...onboardingDocument.employeeIds, ...sharedEmployeeIds])];
+    for (const employee of employees) {
+      if (sharedEmployeeIds.includes(employee.id)) employee.knowledgeDocumentIds = [...new Set([...(employee.knowledgeDocumentIds || []), onboardingDocument.id])];
+    }
+  }
   const legacyRun = Array.isArray(legacy.runs) ? legacy.runs.find((run) => run.employeeId === employees[0]?.id) : undefined;
   const missions = Array.isArray(legacy.missions)
     ? legacy.missions
@@ -1313,16 +1322,16 @@ export function findRelevantDocuments(documents: DocumentRecord[], query: string
     "about", "after", "again", "also", "and", "are", "can", "does", "for", "from", "has", "have", "how", "into", "is", "its", "more", "our", "that", "the", "their", "this", "what", "when", "where", "which", "who", "why", "with", "you", "your",
   ]);
   const terms = [...new Set(query.toLowerCase().split(/[^a-z0-9]+/).filter((term) => term.length > 2 && !stopwords.has(term)))];
-  return [...documents]
+  const ranked = [...documents]
     .map((document) => {
       const haystack = `${document.name} ${document.content}`.toLowerCase();
       const score = terms.reduce((total, term) => total + (haystack.includes(term) ? 1 : 0), 0);
       return { document, score };
     })
     .sort((a, b) => b.score - a.score)
-    .filter(({ score }) => score > 0)
-    .slice(0, 3)
-    .map(({ document }) => document);
+    .filter(({ score }) => score > 0);
+  if (ranked.length > 0) return ranked.slice(0, 3).map(({ document }) => document);
+  return documents.slice(0, 1);
 }
 
 export function scoreRun(task: string, output: string) {
@@ -1537,6 +1546,7 @@ export function buildOnboardingArtifacts(args: {
     status: "live",
     memoryScope: "company",
     tools: ["workspace_search", "mission_write", "profile_read"],
+    knowledgeDocumentIds: [],
     temperature: 0.35,
     reasoning: "balanced",
     locked: false,
@@ -1565,6 +1575,7 @@ export function buildOnboardingArtifacts(args: {
       status: "live" as const,
       memoryScope: "company" as const,
       tools: role.tools,
+      knowledgeDocumentIds: [] as string[],
       temperature: 0.35,
       reasoning: "balanced" as const,
       locked: false,
@@ -1576,7 +1587,8 @@ export function buildOnboardingArtifacts(args: {
       goldenTests: [{ id: createId("gt"), input: role.task, expected: role.expected, lastScore: 0 }],
     } satisfies Employee;
   })];
-  document.employeeIds = [primary.id];
+  document.employeeIds = employees.map((employee) => employee.id);
+  for (const employee of employees) employee.knowledgeDocumentIds = [document.id];
   const missions: Mission[] = employees.map((employee, index) => {
     const role = employee.id === primary.id
       ? { title: `Set the first ${args.goal} priority`, description: goalDetails.task, priority: "high" as const }
