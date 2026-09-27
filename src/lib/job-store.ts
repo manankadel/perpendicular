@@ -23,7 +23,7 @@ export type DeadLetterJob = {
   updatedAt: string;
 };
 
-type JobInput = {
+export type JobInput = {
   workspaceId: string;
   kind: string;
   idempotencyKey: string;
@@ -31,6 +31,30 @@ type JobInput = {
   runAt?: Date;
   maxAttempts?: number;
 };
+
+export async function enqueueJob(input: JobInput) {
+  const now = Date.now();
+  const maxAttempts = input.maxAttempts || 5;
+  if (!databaseConfigured()) {
+    if (memoryJobs.has(input.idempotencyKey)) return;
+    memoryJobs.set(input.idempotencyKey, {
+      id: `job-${crypto.randomUUID()}`,
+      status: "queued",
+      attempts: 0,
+      maxAttempts,
+      runAt: input.runAt?.getTime() || now,
+      lockedAt: null,
+    });
+    return;
+  }
+
+  await query(
+    `insert into perpendicular_jobs (id, workspace_id, kind, payload, idempotency_key, run_at, max_attempts)
+     values ($1, $2, $3, $4::jsonb, $5, $6, $7)
+     on conflict (idempotency_key) do nothing`,
+    [`job-${crypto.randomUUID()}`, input.workspaceId, input.kind, JSON.stringify(input.payload || {}), input.idempotencyKey, input.runAt || new Date(), maxAttempts],
+  );
+}
 
 function available(runAt: number, now: number) {
   return runAt <= now;

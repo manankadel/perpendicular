@@ -53,6 +53,7 @@ import { publishContentInState, scheduleContentInState } from "@/lib/content-run
 import { scheduleCampaignInState } from "@/lib/campaign-runtime";
 import { executeCampaignBroadcast } from "@/lib/campaign-send-runtime";
 import { checkDomainDeliverability } from "@/lib/deliverability";
+import { enqueueJob } from "@/lib/job-store";
 import { defaultBookingSettings, normalizeBookingSettings, slugifyBooking } from "@/lib/booking";
 
 export const dynamic = "force-dynamic";
@@ -489,18 +490,7 @@ async function postWorkspace(request: Request): Promise<Response> {
       const task = employee.goldenTests[0]?.input || "Review the workspace and propose the three highest-leverage next actions for this week.";
       const startedAt = Date.now();
       const result = await generateEmployeeReply(employee, task, current.documents);
-      const launchContentResults: Array<{ content: ContentItem; employee: Employee; result: LlmResult }> = [];
-      const contentBudget = Math.min(3, Math.max(0, Math.floor((current.workspace.aiCredits.remaining - 2) / 2)));
       const onboardingContent = current.content.filter((content) => current.workspace.onboarding.contentIds.includes(content.id));
-      for (const launchContent of onboardingContent.slice(0, contentBudget)) {
-        const launchContentEmployee = findEmployee(current, launchContent.employeeId || "") || employee;
-        try {
-          const launchContentResult = await generateEmployeeReply(launchContentEmployee, `Create a ${launchContent.channel} draft titled "${launchContent.title}". Objective: ${launchContent.objective}. Use only the discovered workspace context, preserve the company's voice, avoid unsupported claims, and include one note about evidence that still needs review.`, current.documents);
-          launchContentResults.push({ content: launchContent, employee: launchContentEmployee, result: launchContentResult });
-        } catch {
-          // The first mission remains the proof gate; content drafts are best-effort launch assets.
-        }
-      }
       const next = await updateWorkspace(companyId, (state) => {
         if (state.workspace.onboarding.runId) return state;
         const liveEmployee = findEmployee(state, employee.id);
@@ -514,25 +504,19 @@ async function postWorkspace(request: Request): Promise<Response> {
           firstMission.runId = run.id;
           firstMission.updatedAt = run.createdAt;
         }
-        for (const launchContent of launchContentResults) {
-          const liveContent = findContent(state, launchContent.content.id);
-          const liveContentEmployee = findEmployee(state, launchContent.employee.id);
-          if (!liveContent || !liveContentEmployee) continue;
-          const contentRun = makeRun(state, liveContentEmployee, `Create a ${launchContent.content.channel} draft titled "${launchContent.content.title}". Objective: ${launchContent.content.objective}.`, "manual", launchContent.result, startedAt);
-          liveContent.status = "review";
-          liveContent.body = launchContent.result.content;
-          liveContent.employeeId = liveContentEmployee.id;
-          liveContent.missionId = firstMission?.id || null;
-          liveContent.updatedAt = contentRun.createdAt;
-          addActivity(state, { type: "content", title: `${liveContent.title} is ready for review`, detail: `${liveContentEmployee.name} · launch draft · score ${contentRun.score}` });
-        }
         state.workspace.onboarding.status = "proved";
         state.workspace.onboarding.runId = run.id;
         addActivity(state, { type: "run", title: `${liveEmployee.name} delivered the first brief`, detail: `Score ${run.score} · ${firstMission ? `${firstMission.title} is ready for review` : `grounded in ${state.documents[0]?.name || "workspace context"}`}`, });
         return state;
       });
       try { await recordAuditEvent({ workspaceId: companyId, actorId: identity.context.userId, action: "workspace.onboarding_run", resourceType: "employee", resourceId: employee.id }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The brief was saved, but its audit record could not be stored." }, { status: 503 }); }
-      try { await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "onboarding_brief", unit: "ai", units: 2 + launchContentResults.length * 2 }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The brief was saved, but its usage record could not be stored." }, { status: 503 }); }
+      await Promise.all(onboardingContent.slice(0, 3).map((content) => enqueueJob({
+        workspaceId: companyId,
+        kind: "onboarding-content-draft",
+        idempotencyKey: `onboarding-content:${companyId}:${content.id}`,
+        payload: { contentId: content.id },
+      }).catch(() => undefined)));
+      try { await recordUsage({ workspaceId: companyId, actorId: identity.context.userId, feature: "onboarding_brief", unit: "ai", units: 2, provider: result.provider }); } catch { if (process.env.NODE_ENV === "production") return json({ state: workspaceStateForClient(next), persisted: true, error: "The brief was saved, but its usage record could not be stored." }, { status: 503 }); }
       return json(workspaceStateForClient(next));
     }
 

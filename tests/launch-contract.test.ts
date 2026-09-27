@@ -307,8 +307,9 @@ test("first-run onboarding produces a visible launch asset set", () => {
   const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
   const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
   assert.match(route, /current\.content\.filter\(\(content\) => current\.workspace\.onboarding\.contentIds\.includes\(content\.id\)\)/);
-  assert.match(route, /launchContentResults\.push/);
-  assert.match(route, /launchContentResults\.length \* 2/);
+  assert.match(route, /enqueueJob/);
+  assert.match(route, /onboarding-content-draft/);
+  assert.match(route, /onboardingContent\.slice\(0, 3\)/);
   assert.match(console, /const onboardingContent = state\.content\.filter/);
   assert.match(console, /Content plan/);
   assert.match(console, /Lead research/);

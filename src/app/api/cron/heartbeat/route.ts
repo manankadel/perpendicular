@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { addActivity, createId, scoreRun, timestamp } from "@/lib/domain";
+import { addActivity, createId, recordEmployeeScore, scoreRun, timestamp } from "@/lib/domain";
 import { getWorkspace, listWorkspaceIds, updateWorkspace } from "@/lib/server-store";
 import { generateEmployeeReply } from "@/lib/llm";
 import { claimJob, completeJob, failJob } from "@/lib/job-store";
@@ -205,6 +205,75 @@ export async function POST(request: Request) {
       } catch (error) {
         failedCount += 1;
         await failJob(claim, error).catch(() => undefined);
+      }
+    }
+
+    const pendingOnboardingDraft = snapshot.workspace.onboarding.contentIds
+      .map((contentId) => snapshot.content.find((content) => content.id === contentId))
+      .find((content) => content && content.status === "draft" && !content.body);
+    if (pendingOnboardingDraft) {
+      const idempotencyKey = `onboarding-content:${companyId}:${pendingOnboardingDraft.id}`;
+      const claim = await claimJob({
+        workspaceId: companyId,
+        kind: "onboarding-content-draft",
+        idempotencyKey,
+        payload: { contentId: pendingOnboardingDraft.id },
+      });
+      if (claim) {
+        try {
+          const current = await getWorkspace(companyId);
+          const content = current.content.find((candidate) => candidate.id === pendingOnboardingDraft.id);
+          const employee = (content?.employeeId ? current.employees.find((candidate) => candidate.id === content.employeeId) : undefined) || current.employees.find((candidate) => candidate.status === "live");
+          if (!content || content.body || content.status !== "draft" || !employee) {
+            await completeJob(claim);
+          } else {
+            if (current.workspace.aiCredits.remaining < 2) throw new Error("Not enough AI Credits for onboarding content drafting.");
+            const task = `Create a ${content.channel} draft titled "${content.title}". Objective: ${content.objective}. Use only the workspace context, preserve the company's voice, avoid unsupported claims, and include one note about evidence that still needs review.`;
+            const startedAt = Date.now();
+            const result = await generateEmployeeReply(employee, task, current.documents);
+            await updateWorkspace(companyId, (state) => {
+              const liveContent = state.content.find((candidate) => candidate.id === content.id);
+              const liveEmployee = state.employees.find((candidate) => candidate.id === employee.id);
+              if (!liveContent || liveContent.body || liveContent.status !== "draft" || !liveEmployee) return state;
+              const scoringStartedAt = Date.now();
+              const score = scoreRun(task, result.content);
+              const createdAt = timestamp();
+              state.runs.unshift({
+                id: createId("run"),
+                employeeId: liveEmployee.id,
+                trigger: "heartbeat",
+                task,
+                output: result.content,
+                score,
+                reason: "The onboarding draft used the employee prompt, retrieved context, and ended with an evidence note.",
+                status: "completed",
+                createdAt,
+                durationMs: Math.max(1, Date.now() - startedAt),
+                trace: [
+                  { label: "Memory", detail: "Loaded workspace state", durationMs: 0, cost: 0, status: "complete" },
+                  { label: "Knowledge", detail: `${result.citations.length} scoped source${result.citations.length === 1 ? "" : "s"} considered`, durationMs: result.timings.retrievalDurationMs, cost: 0, status: "complete" },
+                  { label: "Worker", detail: `${liveEmployee.model} · ${result.provider}`, durationMs: result.timings.workerDurationMs, cost: 1, status: "complete" },
+                  { label: "Evaluator", detail: "Independent rubric score", durationMs: Math.max(0, Date.now() - scoringStartedAt), cost: 1, status: "complete" },
+                ],
+              });
+              state.runs = state.runs.slice(0, 30);
+              state.workspace.aiCredits.remaining = Math.max(0, state.workspace.aiCredits.remaining - 2);
+              recordEmployeeScore(liveEmployee, score);
+              liveEmployee.lastRunAt = createdAt;
+              liveContent.status = "review";
+              liveContent.body = result.content;
+              liveContent.updatedAt = createdAt;
+              addActivity(state, { type: "content", title: `${liveContent.title} is ready for review`, detail: `${liveEmployee.name} · ${liveContent.channel} draft · score ${score}` });
+              return state;
+            });
+            await completeJob(claim);
+            await recordUsage({ workspaceId: companyId, actorId: "heartbeat", feature: "onboarding_content_draft", unit: "ai", units: 2, provider: result.provider });
+            runCount += 1;
+          }
+        } catch (error) {
+          failedCount += 1;
+          await failJob(claim, error).catch(() => undefined);
+        }
       }
     }
   }
