@@ -542,6 +542,7 @@ button:disabled { cursor: wait; opacity: .52; }
 .public-site h1 { max-width: 720px; margin: 14px 0 0; color: var(--text); font-size: clamp(38px, 7vw, 78px); line-height: .98; letter-spacing: -.07em; }
 .public-site-body { max-width: 680px; margin: 24px 0 0; color: var(--text-muted); font-size: 16px; line-height: 1.7; white-space: pre-wrap; }
 .public-site-meta { margin-top: 22px; color: var(--text-dim); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+.public-site-actions { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 22px; }
 .public-site-note { margin-top: 35px; border: 1px solid var(--line); border-radius: 8px; padding: 14px; color: var(--text-muted); font-size: 11px; }
 .public-site-chat { max-width: 600px; margin-top: 36px; border: 1px solid var(--line-bright); border-radius: 10px; background: #0d1012; overflow: hidden; }
 .public-site-chat-header { display: flex; justify-content: space-between; gap: 12px; padding: 13px 15px; border-bottom: 1px solid var(--line); color: var(--text); font-size: 11px; }
