@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildSequenceSteps, sequenceEmailFor, sequenceStepIdempotencyKey } from "../src/lib/sequence";
+import { buildSequenceSteps, sequenceEmailFor, sequenceRequiresGmail, sequenceStepIdempotencyKey } from "../src/lib/sequence";
 import type { Sequence, SmartRow } from "../src/lib/domain";
 
 const row: SmartRow = {
@@ -68,4 +68,9 @@ test("sequence builder keeps five bounded, supported steps", () => {
 
 test("sequence builder rejects steps without a message", () => {
   assert.throws(() => buildSequenceSteps([{ channel: "Email", title: "Empty", delay: "Day 0", subject: "No body", body: "" }], {}), /needs a title, delay, and message/);
+});
+
+test("manual sequence steps do not require Gmail while email steps do", () => {
+  assert.equal(sequenceRequiresGmail({ steps: [{ id: "step-1", channel: "Task", title: "Review", delay: "Day 0", body: "Review the account" }] }), false);
+  assert.equal(sequenceRequiresGmail({ steps: [{ id: "step-1", channel: "Email", title: "Send", delay: "Day 0", body: "Hello" }] }), true);
 });

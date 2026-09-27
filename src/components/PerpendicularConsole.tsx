@@ -42,6 +42,7 @@ import {
 import type { Activity as ActivityRecord, ContentItem, DocumentRecord, Employee, Mission, OnboardingGoal, OutboundSafetySettings, Playbook, SmartList, SmartListAction, SmartRow, UsageSummary, WorkspaceState } from "@/lib/domain";
 import type { DeadLetterJob } from "@/lib/job-store";
 import type { WebhookEventSummary } from "@/lib/integration-store";
+import { sequenceRequiresGmail } from "@/lib/sequence";
 import { PlatformView, type PlatformViewName } from "@/components/PlatformViews";
 
 type View = "overview" | "missions" | "employees" | "knowledge" | "content" | "lists" | "sequences" | "inbox" | "playbooks" | "activity" | "settings" | PlatformViewName;
@@ -428,6 +429,7 @@ function SmartRowItem({ row, list, state, mutate }: { row: SmartRow; list: Smart
   const suppressed = state.suppressedEmails.includes(row.email.toLowerCase());
   const nextStepIndex = row.sequenceStepIndex || 0;
   const nextStep = sequence?.steps[nextStepIndex];
+  const requiresGmail = sequence ? sequenceRequiresGmail(sequence) : false;
   const completed = Boolean(sequence && nextStepIndex >= sequence.steps.length);
   const hasSentStep = Boolean(row.lastProviderMessageId);
   const sequenceAction = suppressed
@@ -439,14 +441,14 @@ function SmartRowItem({ row, list, state, mutate }: { row: SmartRow; list: Smart
         : row.status !== "enriched"
           ? <span className="small-button">Research first</span>
         : row.enrollmentStatus !== "enrolled"
-          ? !gmailConnected ? connectGmail : <button className="small-button" onClick={() => void mutate("enroll-row", { listId: list.id, rowId: row.id, sequenceId: sequence.id }, `${row.name} enrolled with reply-pause enabled.`)}><Send size={11} />Enroll</button>
-          : !gmailConnected
-            ? connectGmail
-            : sequence.status !== "live"
+          ? requiresGmail && !gmailConnected ? connectGmail : <button className="small-button" onClick={() => void mutate("enroll-row", { listId: list.id, rowId: row.id, sequenceId: sequence.id }, `${row.name} enrolled with reply-pause enabled.`)}><Send size={11} />Enroll</button>
+          : sequence.status !== "live"
               ? <span className="small-button">Activate sequence</span>
               : nextStep?.channel !== "Email"
-                ? <span className="small-button">Step {nextStepIndex + 1}: {nextStep?.channel || "Manual"}</span>
-                : <button className="small-button" onClick={() => void mutate("send-sequence-step", { listId: list.id, rowId: row.id, sequenceId: sequence.id, stepIndex: nextStepIndex }, `${row.name} received the approved sequence email.`)}><Send size={11} />{hasSentStep ? `Send step ${nextStepIndex + 1}` : "Send approved email"}</button>;
+                ? <button className="small-button" onClick={() => void mutate("create-sequence-task", { listId: list.id, rowId: row.id, sequenceId: sequence.id, stepIndex: nextStepIndex }, `${row.name} received a ${nextStep?.channel || "manual"} task in Missions.`)}><ClipboardCheck size={11} />Create task</button>
+                : !gmailConnected
+                  ? connectGmail
+                  : <button className="small-button" onClick={() => void mutate("send-sequence-step", { listId: list.id, rowId: row.id, sequenceId: sequence.id, stepIndex: nextStepIndex }, `${row.name} received the approved sequence email.`)}><Send size={11} />{hasSentStep ? `Send step ${nextStepIndex + 1}` : "Send approved email"}</button>;
   const listStatus = suppressed ? "suppressed" : completed ? "complete" : hasSentStep ? `step ${nextStepIndex} sent` : row.enrollmentStatus;
   return <tr><td><div className="row-name"><div className="row-initial">{initials(row.name)}</div><div><strong>{row.name}</strong><div className="row-company">{row.company} · {row.email}</div></div></div></td><td><strong>{row.role}</strong><div className="row-company">{row.location}</div></td><td className="score-cell" title={(row.scoreReasons || []).join(" · ")}><strong>{row.score}</strong><div className="row-company">{row.scoreReasons?.[0] || "Awaiting score explanation"}</div></td><td><div>{row.intent}</div><div className={`row-company ${row.emailStatus === "verified" ? "verified" : "unknown"}`}>{row.emailStatus === "verified" ? "Verified email" : "Needs enrichment"}</div></td><td><span className={suppressed ? "unknown" : completed || hasSentStep ? "verified" : "unknown"}>{listStatus}</span></td><td><div className="row-actions">{suppressed ? <button className="small-button" onClick={() => void mutate("unsuppress-row", { listId: list.id, rowId: row.id }, `${row.name} can be enrolled again.`)}>Unsuppress</button> : <button className="small-button" onClick={() => void mutate("suppress-row", { listId: list.id, rowId: row.id }, `${row.name} suppressed for this workspace.`)}>Suppress</button>}{row.status === "enriched" ? <span className="small-button ready"><Check size={11} />Ready</span> : <button className="small-button" onClick={() => void mutate("enrich-row", { listId: list.id, rowId: row.id }, `${row.name} enriched. 2 Data Credits used.`)}><Zap size={11} />Enrich</button>}{sequenceAction}</div></td></tr>;
 }
@@ -455,12 +457,13 @@ function SequencesView({ state, mutate, setShowSequence }: { state: WorkspaceSta
   const list = state.lists[0];
   const nextSequence = state.sequences[0];
   const gmailConnected = state.integrations?.some((integration) => integration.provider === "gmail" && integration.status === "connected") === true;
+  const requiresGmail = nextSequence ? sequenceRequiresGmail(nextSequence) : false;
   const nextRow = list?.rows.find((row) => row.status === "enriched" && row.enrollmentStatus !== "enrolled");
   const enrollAction = !list || !nextSequence || !nextRow
     ? <button className="button-secondary" disabled><Send size={13} />No researched row ready</button>
     : nextSequence.status !== "live"
       ? <button className="button-secondary" disabled><Check size={13} />Activate sequence before enrolling</button>
-    : gmailConnected
+    : !requiresGmail || gmailConnected
       ? <button className="button-secondary" onClick={() => void mutate("enroll-row", { listId: list.id, rowId: nextRow.id, sequenceId: nextSequence.id }, "The next researched row entered the sequence.")}><Send size={13} />Enroll next researched row</button>
       : <a className="button-secondary" href={apiPath("/api/integrations/google/start")}><Mail size={13} />Connect Gmail to enroll</a>;
   return <><PageHeading eyebrow="One list, one send" title="Follow-through with guardrails." subtitle="A sequence is a controlled rhythm—not a blast. Gmail, reply-pause, suppression, and human approval are part of the send path."><button className="button-primary" onClick={() => setShowSequence(true)}><Plus size={13} />Create sequence</button>{enrollAction}</PageHeading>{state.sequences.length ? <div className="sequence-list">{state.sequences.map((sequence) => <section className="sequence-card" key={sequence.id}><div className="sequence-head"><div><div className="sequence-name">{sequence.name} <StatusPill status={sequence.status === "live" ? "live" : "draft"} /></div><div className="sequence-audience">Audience · {sequence.audience}</div></div><div className="sequence-metrics"><div className="sequence-metric"><strong>{sequence.enrolled}</strong><span>Enrolled</span></div><div className="sequence-metric"><strong>{sequence.sent || 0}</strong><span>Sent</span></div><div className="sequence-metric"><strong>{sequence.replied}</strong><span>Replies</span></div><div className="sequence-metric"><strong>{sequence.booked}</strong><span>Booked</span></div></div></div><div className="steps">{sequence.steps.map((step, index) => <div className="step" key={step.id}><div className="step-number">{index + 1}</div><div className="step-channel">{step.channel}</div><div><div className="step-title">{step.title}</div>{step.subject ? <div className="step-body">Subject: {step.subject}</div> : null}<div className="step-body">{step.body}</div></div><div className="step-delay">{step.delay}</div></div>)}</div>{sequence.status === "live" ? <div className="sequence-footer"><span className="list-meta">Suppression · reply-pause · timezone windows · audit log</span></div> : <div className="sequence-footer"><span className="list-meta">Draft · review this message, then activate it for explicit sends.</span><button className="small-button ready" onClick={() => void mutate("activate-sequence", { sequenceId: sequence.id }, `${sequence.name} is live. Each email still needs your approval.`)}><Check size={11} />Activate after review</button></div>}</section>)}</div> : <div className="empty-state">Create a draft sequence, then connect Gmail before any external send is enabled.</div>}</>;

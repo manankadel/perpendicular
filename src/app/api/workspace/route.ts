@@ -32,7 +32,7 @@ import { listIntegrationSummaries, recordAuditEvent } from "@/lib/integration-st
 import { sendGmailMessage, GmailSendError } from "@/lib/gmail";
 import { upsertGmailMessage } from "@/lib/inbox-store";
 import { claimOutboundMessage, markOutboundFailed, markOutboundSent, markOutboundUnknown } from "@/lib/outbound-store";
-import { buildSequenceSteps, sequenceEmailFor, sequenceStepIdempotencyKey } from "@/lib/sequence";
+import { buildSequenceSteps, sequenceEmailFor, sequenceRequiresGmail, sequenceStepIdempotencyKey } from "@/lib/sequence";
 import { ingestUploadedDocument } from "@/lib/document-ingest";
 import { researchPersonCompany, researchPublicKeyword, researchWebsite } from "@/lib/public-research";
 import { corsHeadersFor } from "@/lib/cors";
@@ -288,14 +288,73 @@ async function postWorkspace(request: Request): Promise<Response> {
     }
 
     if (action === "enroll-row") {
-      try {
-        const integrations = await listIntegrationSummaries(companyId);
-        if (integrations.find((integration) => integration.provider === "gmail")?.status !== "connected") {
-          return json({ error: "Connect Gmail before enrolling a lead in a sequence." }, { status: 400 });
+      const current = await getWorkspace(companyId);
+      const sequence = current.sequences.find((candidate) => candidate.id === String(body.sequenceId || ""));
+      if (!sequence) return json({ error: "Sequence not found." }, { status: 400 });
+      if (sequenceRequiresGmail(sequence)) {
+        try {
+          const integrations = await listIntegrationSummaries(companyId);
+          if (integrations.find((integration) => integration.provider === "gmail")?.status !== "connected") {
+            return json({ error: "Connect Gmail before enrolling a lead in an email sequence." }, { status: 400 });
+          }
+        } catch {
+          return json({ error: "Gmail connection status is unavailable. Apply the platform database migration." }, { status: 503 });
         }
-      } catch {
-        return json({ error: "Gmail connection status is unavailable. Apply the platform database migration." }, { status: 503 });
       }
+    }
+
+    if (action === "create-sequence-task") {
+      const listId = String(body.listId || "");
+      const rowId = String(body.rowId || "");
+      const sequenceId = String(body.sequenceId || "");
+      const current = await getWorkspace(companyId);
+      const list = current.lists.find((item) => item.id === listId);
+      const row = list?.rows.find((item) => item.id === rowId);
+      const sequence = current.sequences.find((item) => item.id === sequenceId);
+      const stepIndex = Number.isInteger(Number(body.stepIndex)) ? Number(body.stepIndex) : row?.sequenceStepIndex || 0;
+      const step = sequence?.steps[stepIndex];
+      if (!list || !row || !sequence || !step) return json({ error: "Lead, sequence, or sequence step not found." }, { status: 400 });
+      if (sequence.status !== "live") return json({ error: "Activate the sequence after reviewing its steps before creating a task." }, { status: 400 });
+      if (step.channel === "Email") return json({ error: "Email steps require the approved Gmail send action." }, { status: 400 });
+      if (row.status !== "enriched") return json({ error: "Research the lead before creating a sequence task." }, { status: 400 });
+      if (row.enrollmentStatus === "replied") return json({ error: "This sequence is paused because the lead replied." }, { status: 400 });
+      if (row.enrollmentStatus !== "enrolled") return json({ error: "Enroll the lead before creating a sequence task." }, { status: 400 });
+      if (row.sequenceId && row.sequenceId !== sequence.id) return json({ error: "This lead is enrolled in a different sequence." }, { status: 409 });
+      if ((row.sequenceStepIndex || 0) > stepIndex) return json({ error: "This sequence step has already been completed." }, { status: 409 });
+      if (current.suppressedEmails.includes(row.email.toLowerCase())) return json({ error: "This address is suppressed and cannot receive sequence work." }, { status: 400 });
+      const taskTitle = `Manual sequence task · ${row.name} · ${step.title}`;
+      const next = await updateWorkspace(companyId, (state) => {
+        const liveList = state.lists.find((item) => item.id === listId);
+        const liveRow = liveList?.rows.find((item) => item.id === rowId);
+        const liveSequence = state.sequences.find((item) => item.id === sequenceId);
+        if (!liveList || !liveRow || !liveSequence) throw new Error("Lead, sequence, or sequence step not found.");
+        const existing = state.missions.find((mission) => mission.title === taskTitle);
+        if (existing) return state;
+        const employeeId = state.employees.find((employee) => employee.status === "live")?.id || null;
+        const createdAt = timestamp();
+        const mission: Mission = {
+          id: createId("mission"),
+          title: taskTitle,
+          description: `${step.channel} follow-up for ${liveRow.name} at ${liveRow.company} (${liveRow.email}).\n\nInstructions: ${step.body}`,
+          status: "ready",
+          priority: "normal",
+          employeeId,
+          sourceDocumentIds: [],
+          output: null,
+          runId: null,
+          dueAt: null,
+          createdAt,
+          updatedAt: createdAt,
+        };
+        state.missions.unshift(mission);
+        liveRow.sequenceId = liveSequence.id;
+        liveRow.sequenceStepIndex = stepIndex + 1;
+        liveRow.sequenceStatus = liveRow.sequenceStepIndex >= liveSequence.steps.length ? "completed" : "active";
+        liveRow.lastAction = `Created ${step.channel} task: ${step.title}`;
+        addActivity(state, { type: "sequence", title: `${liveRow.name} received a manual sequence task`, detail: `${step.channel} · ${step.title} · added to Missions` });
+        return state;
+      });
+      return json({ state: workspaceStateForClient(next), taskTitle }, { headers: rateLimitHeaders(identity.context) });
     }
 
     if (action === "send-sequence-step") {

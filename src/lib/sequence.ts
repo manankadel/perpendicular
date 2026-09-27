@@ -29,6 +29,10 @@ export function buildSequenceSteps(value: unknown, fallback: { subject?: string;
   return steps;
 }
 
+export function sequenceRequiresGmail(sequence: Pick<Sequence, "steps">) {
+  return sequence.steps.some((step) => step.channel === "Email");
+}
+
 export function sequenceStepIdempotencyKey(workspaceId: string, sequenceId: string, rowId: string, stepIndex: number) {
   return `sequence:${workspaceId}:${sequenceId}:${rowId}:step:${stepIndex}`;
 }

@@ -267,11 +267,12 @@ test("Smart List scores expose their actual reasons", () => {
   assert.match(console, /scoreReasons/);
 });
 
-test("sequence enrollment is blocked until Gmail is connected", () => {
+test("email sequence enrollment is blocked until Gmail is connected", () => {
   const route = readFileSync(join(root, "src/app/api/workspace/route.ts"), "utf8");
   const console = readFileSync(join(root, "src/components/PerpendicularConsole.tsx"), "utf8");
-  assert.match(route, /Connect Gmail before enrolling a lead in a sequence/);
+  assert.match(route, /Connect Gmail before enrolling a lead in an email sequence/);
   assert.match(console, /Connect Gmail to enroll/);
+  assert.match(console, /create-sequence-task/);
 });
 
 test("sequence sends require activation and are explicit Gmail mutations", () => {
